@@ -1,0 +1,136 @@
+version: '3.8'
+
+services:
+  ai-base-latest:
+    image: ai-base:latest
+    container_name: ai-base-latest
+    hostname: ai-base-latest
+
+    # Multi-GPU support (NVIDIA, AMD ROCm, or Vulkan fallback)
+    # NOTE: Currently uses Vulkan fallback - enable runtime/devices based on your GPU
+
+    # Uncomment for NVIDIA GPU:
+    # runtime: nvidia
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all
+    #   - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+    # Uncomment for AMD ROCm:
+    # ipc: host
+    # security_opt:
+    #   - seccomp:unconfined
+    # group_add:
+    #   - video
+    #   - render
+
+    # Universal device access (works for Vulkan, NVIDIA, AMD)
+    devices:
+      - /dev/dri:/dev/dri                    # DRI for Vulkan/Mesa
+      # Uncomment for AMD ROCm:
+      # - /dev/kfd:/dev/kfd
+      # - /dev/dri/renderD128:/dev/dri/renderD128
+
+    # Volumes for persistent model storage
+    volumes:
+      - ./models/ollama:/models/ollama
+      - ./models/llama:/models/llama
+      - ./models/exo:/models/exo
+      - ./workspace:/workspace
+
+    # Environment variables (auto-detects GPU backend)
+    environment:
+      - GPU_BACKEND=auto                     # Auto-detect best GPU backend
+      - OLLAMA_MODELS=/models/ollama
+      - LLAMA_MODELS=/models/llama
+      - EXO_MODELS=/models/exo
+      - LOG_LEVEL=info
+      # Uncomment for AMD ROCm:
+      # - HSA_OVERRIDE_GFX_VERSION=10.3.0
+
+    # Keep container running for interactive use
+    command: tail -f /dev/null
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "/opt/ai-base/scripts/detect-gpu.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+        reservations:
+          memory: 16G
+          # Uncomment for NVIDIA:
+          # devices:
+          #   - driver: nvidia
+          #     count: 1
+          #     capabilities: [gpu]
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network
+    networks:
+      - ai-base-network
+
+  # Optional: Ollama service with auto-detection
+  ollama-latest:
+    image: ai-base:latest
+    container_name: ollama-latest
+    hostname: ollama-latest
+
+    # Uncomment for NVIDIA:
+    # runtime: nvidia
+
+    # Uncomment for AMD ROCm:
+    # ipc: host
+    # security_opt:
+    #   - seccomp:unconfined
+    # group_add:
+    #   - video
+    #   - render
+
+    devices:
+      - /dev/dri:/dev/dri
+      # Uncomment for AMD ROCm:
+      # - /dev/kfd:/dev/kfd
+      # - /dev/dri/renderD128:/dev/dri/renderD128
+
+    volumes:
+      - ./models/ollama:/models/ollama
+
+    environment:
+      - GPU_BACKEND=auto
+      - OLLAMA_MODELS=/models/ollama
+      - OLLAMA_HOST=0.0.0.0:11434
+      # Uncomment for NVIDIA:
+      # - NVIDIA_VISIBLE_DEVICES=all
+      # - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # Uncomment for AMD ROCm:
+      # - HSA_OVERRIDE_GFX_VERSION=10.3.0
+
+    command: ["/opt/ai-base/bin/ollama", "serve"]
+
+    ports:
+      - "11437:11434"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    restart: unless-stopped
+
+    networks:
+      - ai-base-network
+
+networks:
+  ai-base-network:
+    driver: bridge

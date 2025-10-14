@@ -1,5 +1,31 @@
 version: '3.8'
 
+# ==============================================================================
+# AI Base Layer - Test & Comparison Docker Compose Configuration
+# ==============================================================================
+#
+# This file provides comprehensive testing services for all AI base variants.
+# For production deployments, use the variant-specific compose files:
+#
+#   - docker-compose.ai-base-vulkan.yml  (Universal GPU support)
+#   - docker-compose.ai-base-nvidia.yml  (NVIDIA CUDA GPUs)
+#   - docker-compose.ai-base-rocm.yml    (AMD ROCm GPUs)
+#   - docker-compose.ai-base-latest.yml  (Multi-backend with auto-detection)
+#
+# Quick Start:
+#   docker-compose -f docker-compose.ai-base-vulkan.yml up    # Start Vulkan variant
+#   docker-compose -f docker-compose.ai-base.yml up test-vulkan-info  # Run tests
+#
+# Available Test Services:
+#   - test-*-info      : Display GPU info for each variant
+#   - test-*-detect    : Test GPU detection
+#   - test-*-validate  : Validate GPU configuration
+#   - *-ollama         : Run Ollama server for each variant
+#   - exo-node-*       : Distributed inference cluster example
+#   - compare-*        : Side-by-side comparison environment
+#
+# ==============================================================================
+
 # Docker Compose configuration for testing AI Base Layer variants
 # Usage: docker-compose -f docker-compose.ai-base.yml up [service-name]
 

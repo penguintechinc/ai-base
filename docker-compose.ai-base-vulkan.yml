@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  ai-base-vulkan:
+    image: ai-base:vulkan
+    container_name: ai-base-vulkan
+    hostname: ai-base-vulkan
+
+    # Vulkan GPU access
+    devices:
+      - /dev/dri:/dev/dri  # For Vulkan/Mesa drivers
+
+    # Volumes for persistent model storage
+    volumes:
+      - ./models/ollama:/models/ollama
+      - ./models/llama:/models/llama
+      - ./models/exo:/models/exo
+      - ./workspace:/workspace
+
+    # Environment variables
+    environment:
+      - GPU_BACKEND=vulkan
+      - VK_LAYER_PATH=/usr/share/vulkan/explicit_layer.d
+      - OLLAMA_MODELS=/models/ollama
+      - LLAMA_MODELS=/models/llama
+      - EXO_MODELS=/models/exo
+      - LOG_LEVEL=info
+
+    # Keep container running for interactive use
+    command: tail -f /dev/null
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "vulkaninfo", "--summary"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits (adjust based on your system)
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          memory: 8G
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network
+    networks:
+      - ai-base-network
+
+  # Optional: Ollama service running separately
+  ollama-vulkan:
+    image: ai-base:vulkan
+    container_name: ollama-vulkan
+    hostname: ollama-vulkan
+
+    devices:
+      - /dev/dri:/dev/dri
+
+    volumes:
+      - ./models/ollama:/models/ollama
+
+    environment:
+      - GPU_BACKEND=vulkan
+      - OLLAMA_MODELS=/models/ollama
+      - OLLAMA_HOST=0.0.0.0:11434
+
+    command: ["/opt/ai-base/bin/ollama", "serve"]
+
+    ports:
+      - "11434:11434"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    restart: unless-stopped
+
+    networks:
+      - ai-base-network
+
+networks:
+  ai-base-network:
+    driver: bridge

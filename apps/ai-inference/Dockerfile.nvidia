@@ -1,0 +1,161 @@
+# NVIDIA CUDA AI Base Layer Image
+# Based on official NVIDIA CUDA image with native CUDA support
+# Supports: Ollama (CUDA), llama.cpp (CUDA), EXO (CUDA)
+#
+# NOTE: NVIDIA provides both Debian and Ubuntu CUDA images
+# Using Ubuntu 22.04 as it has better package availability
+# Debian option: nvidia/cuda:12.3.1-devel-debian12 (if preferred)
+#
+# Build: docker build -f Dockerfile.nvidia -t ai-base:nvidia .
+
+FROM nvidia/cuda:12.3.1-devel-ubuntu22.04 AS base-system
+
+LABEL maintainer="Penguin Tech Group LLC <info@penguintech.group>"
+LABEL org.opencontainers.image.source="https://github.com/penguincloud/ai-base"
+LABEL org.opencontainers.image.description="NVIDIA CUDA AI inference base layer"
+LABEL org.opencontainers.image.licenses="AGPL-3.0"
+LABEL variant="nvidia"
+LABEL engines="ollama,llama.cpp,exo"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PATH="/opt/ai-base/bin:/usr/local/cuda/bin:/usr/local/bin:$PATH" \
+    LD_LIBRARY_PATH="/opt/ai-base/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH" \
+    CUDA_HOME="/usr/local/cuda"
+
+# Install common dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    libcurl4-openssl-dev \
+    wget \
+    git \
+    cmake \
+    ninja-build \
+    pkg-config \
+    libgomp1 \
+    libopenblas-dev \
+    python3 \
+    python3-pip \
+    python3-venv \
+    pciutils \
+    lshw \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directories
+RUN mkdir -p /opt/ai-base/{bin,lib,scripts,models} \
+    && mkdir -p /usr/local/share/ai-base
+
+# =============================================================================
+# Stage 2: Build llama.cpp with CUDA support
+# =============================================================================
+FROM base-system AS build-llamacpp
+
+WORKDIR /tmp/llama-build
+
+# Clone llama.cpp
+RUN git clone https://github.com/ggerganov/llama.cpp.git . \
+    && git checkout master
+
+# Build llama.cpp with CUDA support
+RUN cmake -B build -S . -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build --config Release -j$(nproc)
+
+# Install llama.cpp binaries
+RUN mkdir -p /opt/ai-base/bin && \
+    if [ -d build/bin ]; then \
+        cp build/bin/* /opt/ai-base/bin/; \
+    else \
+        find build -name "llama-*" -type f -executable -exec cp {} /opt/ai-base/bin/ \;; \
+    fi
+
+# =============================================================================
+# Stage 3: Install Ollama
+# =============================================================================
+FROM base-system AS build-ollama
+
+# Install Ollama (will use CUDA automatically)
+RUN curl -fsSL https://ollama.com/install.sh | sh \
+    && mkdir -p /opt/ai-base/bin \
+    && cp /usr/local/bin/ollama /opt/ai-base/bin/
+
+# =============================================================================
+# Stage 4: Install EXO with CUDA support
+# =============================================================================
+FROM base-system AS build-exo
+
+# Install EXO with CUDA-enabled PyTorch
+RUN pip3 install --no-cache-dir --break-system-packages \
+    exo-lang \
+    torch \
+    numpy
+
+# Install CUDA-specific PyTorch
+RUN pip3 install --no-cache-dir --break-system-packages \
+    torch --index-url https://download.pytorch.org/whl/cu121
+
+# =============================================================================
+# Stage 5: Final Runtime Image
+# =============================================================================
+FROM nvidia/cuda:12.3.1-runtime-ubuntu22.04 AS runtime
+
+LABEL variant="nvidia"
+LABEL engines="ollama,llama.cpp,exo"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    GPU_VARIANT=nvidia \
+    GPU_BACKEND=cuda \
+    PATH="/opt/ai-base/bin:/usr/local/cuda/bin:/usr/local/bin:$PATH" \
+    LD_LIBRARY_PATH="/opt/ai-base/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH" \
+    CUDA_HOME="/usr/local/cuda"
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    libopenblas0 \
+    python3 \
+    python3-pip \
+    curl \
+    wget \
+    jq \
+    pciutils \
+    lshw \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy all built binaries
+COPY --from=build-llamacpp /opt/ai-base/bin/* /opt/ai-base/bin/
+COPY --from=build-ollama /opt/ai-base/bin/ollama /opt/ai-base/bin/
+
+# Copy Python packages for EXO
+COPY --from=build-exo /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
+
+# Create model directories
+RUN mkdir -p /models/{ollama,llama,exo} \
+    && chmod -R 777 /models
+
+# Copy helper scripts
+COPY scripts/*.sh /opt/ai-base/scripts/
+RUN chmod +x /opt/ai-base/scripts/*.sh \
+    && ln -s /opt/ai-base/scripts/detect-gpu.sh /usr/local/bin/detect-gpu \
+    && ln -s /opt/ai-base/scripts/select-backend.sh /usr/local/bin/select-backend \
+    && ln -s /opt/ai-base/scripts/validate-gpu.sh /usr/local/bin/validate-gpu \
+    && ln -s /opt/ai-base/scripts/gpu-info.sh /usr/local/bin/gpu-info
+
+# Set GPU backend
+RUN echo "export GPU_BACKEND=cuda" >> /etc/environment
+
+# Environment for models
+ENV OLLAMA_MODELS=/models/ollama \
+    LLAMA_MODELS=/models/llama \
+    EXO_MODELS=/models/exo \
+    LOG_LEVEL=info
+
+WORKDIR /workspace
+
+CMD ["/usr/local/bin/gpu-info"]

@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  ai-base-rocm:
+    image: ai-base:rocm
+    container_name: ai-base-rocm
+    hostname: ai-base-rocm
+
+    # AMD ROCm GPU access
+    # NOTE: Currently uses Vulkan fallback - for native ROCm, rebuild with rocm/dev-ubuntu base
+    devices:
+      - /dev/kfd:/dev/kfd                    # ROCm kernel driver
+      - /dev/dri:/dev/dri                    # Direct Rendering Interface
+      - /dev/dri/renderD128:/dev/dri/renderD128  # Primary render device
+
+    # Required for ROCm
+    group_add:
+      - video
+      - render
+
+    # IPC namespace for ROCm
+    ipc: host
+
+    # Security options for ROCm
+    security_opt:
+      - seccomp:unconfined
+
+    # Volumes for persistent model storage
+    volumes:
+      - ./models/ollama:/models/ollama
+      - ./models/llama:/models/llama
+      - ./models/exo:/models/exo
+      - ./workspace:/workspace
+
+    # Environment variables
+    environment:
+      - GPU_BACKEND=rocm
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0      # Adjust based on your GPU
+      - ROCR_VISIBLE_DEVICES=0
+      - HIP_VISIBLE_DEVICES=0
+      - OLLAMA_MODELS=/models/ollama
+      - LLAMA_MODELS=/models/llama
+      - EXO_MODELS=/models/exo
+      - LOG_LEVEL=info
+
+    # Keep container running for interactive use
+    command: tail -f /dev/null
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "/opt/ai-base/scripts/detect-gpu.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits (adjust based on your GPU)
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+        reservations:
+          memory: 16G
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network
+    networks:
+      - ai-base-network
+
+  # Optional: Ollama service with AMD ROCm
+  ollama-rocm:
+    image: ai-base:rocm
+    container_name: ollama-rocm
+    hostname: ollama-rocm
+
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+      - /dev/dri/renderD128:/dev/dri/renderD128
+
+    group_add:
+      - video
+      - render
+
+    ipc: host
+
+    security_opt:
+      - seccomp:unconfined
+
+    volumes:
+      - ./models/ollama:/models/ollama
+
+    environment:
+      - GPU_BACKEND=rocm
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+      - ROCR_VISIBLE_DEVICES=0
+      - OLLAMA_MODELS=/models/ollama
+      - OLLAMA_HOST=0.0.0.0:11434
+
+    command: ["/opt/ai-base/bin/ollama", "serve"]
+
+    ports:
+      - "11436:11434"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    restart: unless-stopped
+
+    networks:
+      - ai-base-network
+
+networks:
+  ai-base-network:
+    driver: bridge

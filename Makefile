@@ -422,20 +422,36 @@ ai-base-build-vulkan: ## Docker - Build AI base vulkan variant
 		-f apps/ai-inference/Dockerfile \
 		apps/ai-inference/
 
-ai-base-build-nvidia: ## Docker - Build AI base nvidia variant
-	@echo "$(BLUE)Building AI base layer (nvidia variant)...$(RESET)"
+ai-base-build-nvidia: ## Docker - Build AI base nvidia variant (Vulkan fallback)
+	@echo "$(BLUE)Building AI base layer (nvidia variant - Vulkan fallback)...$(RESET)"
 	@docker build --build-arg GPU_VARIANT=nvidia \
-		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:nvidia \
-		-t ai-base:nvidia \
+		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:nvidia-vulkan \
+		-t ai-base:nvidia-vulkan \
 		-f apps/ai-inference/Dockerfile \
 		apps/ai-inference/
 
-ai-base-build-rocm: ## Docker - Build AI base rocm variant
-	@echo "$(BLUE)Building AI base layer (rocm variant)...$(RESET)"
+ai-base-build-nvidia-cuda: ## Docker - Build AI base nvidia variant with native CUDA
+	@echo "$(BLUE)Building AI base layer (nvidia variant - native CUDA)...$(RESET)"
+	@docker build \
+		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:nvidia \
+		-t ai-base:nvidia \
+		-f apps/ai-inference/Dockerfile.nvidia \
+		apps/ai-inference/
+
+ai-base-build-rocm: ## Docker - Build AI base rocm variant (Vulkan fallback)
+	@echo "$(BLUE)Building AI base layer (rocm variant - Vulkan fallback)...$(RESET)"
 	@docker build --build-arg GPU_VARIANT=rocm \
+		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:rocm-vulkan \
+		-t ai-base:rocm-vulkan \
+		-f apps/ai-inference/Dockerfile \
+		apps/ai-inference/
+
+ai-base-build-rocm-native: ## Docker - Build AI base rocm variant with native ROCm
+	@echo "$(BLUE)Building AI base layer (rocm variant - native ROCm)...$(RESET)"
+	@docker build \
 		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:rocm \
 		-t ai-base:rocm \
-		-f apps/ai-inference/Dockerfile \
+		-f apps/ai-inference/Dockerfile.rocm \
 		apps/ai-inference/
 
 ai-base-build-latest: ## Docker - Build AI base latest variant (multi-backend)
@@ -446,8 +462,16 @@ ai-base-build-latest: ## Docker - Build AI base latest variant (multi-backend)
 		-f apps/ai-inference/Dockerfile \
 		apps/ai-inference/
 
-ai-base-build-all: ## Docker - Build all AI base layer variants
-	@echo "$(BLUE)Building all AI base layer variants...$(RESET)"
+ai-base-build-all: ## Docker - Build all AI base layer variants (native GPU support)
+	@echo "$(BLUE)Building all AI base layer variants with native GPU support...$(RESET)"
+	@$(MAKE) ai-base-build-vulkan
+	@$(MAKE) ai-base-build-nvidia-cuda
+	@$(MAKE) ai-base-build-rocm-native
+	@$(MAKE) ai-base-build-latest
+	@echo "$(GREEN)All AI base layer variants built successfully!$(RESET)"
+
+ai-base-build-all-vulkan-fallback: ## Docker - Build all AI base layer variants (Vulkan fallback)
+	@echo "$(BLUE)Building all AI base layer variants with Vulkan fallback...$(RESET)"
 	@$(MAKE) ai-base-build-vulkan
 	@$(MAKE) ai-base-build-nvidia
 	@$(MAKE) ai-base-build-rocm

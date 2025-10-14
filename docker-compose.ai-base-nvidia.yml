@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  ai-base-nvidia:
+    image: ai-base:nvidia
+    container_name: ai-base-nvidia
+    hostname: ai-base-nvidia
+
+    # NVIDIA GPU access (requires nvidia-container-runtime)
+    # NOTE: Currently uses Vulkan fallback - for native CUDA, rebuild with nvidia/cuda base
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - GPU_BACKEND=cuda
+      - CUDA_VISIBLE_DEVICES=0
+      - OLLAMA_MODELS=/models/ollama
+      - LLAMA_MODELS=/models/llama
+      - EXO_MODELS=/models/exo
+      - LOG_LEVEL=info
+
+    # Also provide DRI access for Vulkan fallback
+    devices:
+      - /dev/dri:/dev/dri
+
+    # Volumes for persistent model storage
+    volumes:
+      - ./models/ollama:/models/ollama
+      - ./models/llama:/models/llama
+      - ./models/exo:/models/exo
+      - ./workspace:/workspace
+
+    # Keep container running for interactive use
+    command: tail -f /dev/null
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "/opt/ai-base/scripts/detect-gpu.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits (adjust based on your GPU)
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+        reservations:
+          memory: 16G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network
+    networks:
+      - ai-base-network
+
+  # Optional: Ollama service with NVIDIA GPU
+  ollama-nvidia:
+    image: ai-base:nvidia
+    container_name: ollama-nvidia
+    hostname: ollama-nvidia
+
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - GPU_BACKEND=cuda
+      - OLLAMA_MODELS=/models/ollama
+      - OLLAMA_HOST=0.0.0.0:11434
+
+    devices:
+      - /dev/dri:/dev/dri
+
+    volumes:
+      - ./models/ollama:/models/ollama
+
+    command: ["/opt/ai-base/bin/ollama", "serve"]
+
+    ports:
+      - "11435:11434"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    restart: unless-stopped
+
+    networks:
+      - ai-base-network
+
+networks:
+  ai-base-network:
+    driver: bridge
