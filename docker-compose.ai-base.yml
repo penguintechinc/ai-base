@@ -1,0 +1,377 @@
+version: '3.8'
+
+# Docker Compose configuration for testing AI Base Layer variants
+# Usage: docker-compose -f docker-compose.ai-base.yml up [service-name]
+
+services:
+  # ===========================================================================
+  # Vulkan Variant Tests
+  # ===========================================================================
+
+  test-vulkan-info:
+    image: ai-base:vulkan
+    container_name: ai-base-test-vulkan-info
+    command: ["/usr/local/bin/gpu-info"]
+    environment:
+      - GPU_BACKEND=vulkan
+      - LOG_LEVEL=info
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  test-vulkan-detect:
+    image: ai-base:vulkan
+    container_name: ai-base-test-vulkan-detect
+    command: ["/usr/local/bin/detect-gpu"]
+    environment:
+      - GPU_BACKEND=vulkan
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  test-vulkan-validate:
+    image: ai-base:vulkan
+    container_name: ai-base-test-vulkan-validate
+    command: ["/usr/local/bin/validate-gpu"]
+    environment:
+      - GPU_BACKEND=vulkan
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  # Vulkan with Ollama
+  vulkan-ollama:
+    image: ai-base:vulkan
+    container_name: ai-base-vulkan-ollama
+    command: ["ollama", "serve"]
+    environment:
+      - GPU_BACKEND=vulkan
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_MODELS=/models
+    ports:
+      - "11434:11434"
+    volumes:
+      - ai_models_vulkan:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  # ===========================================================================
+  # NVIDIA Variant Tests
+  # ===========================================================================
+
+  test-nvidia-info:
+    image: ai-base:nvidia
+    container_name: ai-base-test-nvidia-info
+    command: ["/usr/local/bin/gpu-info"]
+    environment:
+      - GPU_BACKEND=cuda
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  test-nvidia-detect:
+    image: ai-base:nvidia
+    container_name: ai-base-test-nvidia-detect
+    command: ["/usr/local/bin/detect-gpu"]
+    environment:
+      - GPU_BACKEND=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  test-nvidia-validate:
+    image: ai-base:nvidia
+    container_name: ai-base-test-nvidia-validate
+    command: ["/usr/local/bin/validate-gpu"]
+    environment:
+      - GPU_BACKEND=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # NVIDIA with Ollama
+  nvidia-ollama:
+    image: ai-base:nvidia
+    container_name: ai-base-nvidia-ollama
+    command: ["ollama", "serve"]
+    environment:
+      - GPU_BACKEND=cuda
+      - CUDA_VISIBLE_DEVICES=0
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_MODELS=/models
+    ports:
+      - "11435:11434"
+    volumes:
+      - ai_models_nvidia:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ===========================================================================
+  # ROCm Variant Tests
+  # ===========================================================================
+
+  test-rocm-info:
+    image: ai-base:rocm
+    container_name: ai-base-test-rocm-info
+    command: ["/usr/local/bin/gpu-info"]
+    environment:
+      - GPU_BACKEND=rocm
+      - HIP_VISIBLE_DEVICES=0
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+
+  test-rocm-detect:
+    image: ai-base:rocm
+    container_name: ai-base-test-rocm-detect
+    command: ["/usr/local/bin/detect-gpu"]
+    environment:
+      - GPU_BACKEND=rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+
+  test-rocm-validate:
+    image: ai-base:rocm
+    container_name: ai-base-test-rocm-validate
+    command: ["/usr/local/bin/validate-gpu"]
+    environment:
+      - GPU_BACKEND=rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+
+  # ROCm with Ollama
+  rocm-ollama:
+    image: ai-base:rocm
+    container_name: ai-base-rocm-ollama
+    command: ["ollama", "serve"]
+    environment:
+      - GPU_BACKEND=rocm
+      - HIP_VISIBLE_DEVICES=0
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_MODELS=/models
+    ports:
+      - "11436:11434"
+    volumes:
+      - ai_models_rocm:/models
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+
+  # ===========================================================================
+  # Latest/Multi-Backend Variant Tests
+  # ===========================================================================
+
+  test-latest-info:
+    image: ai-base:latest
+    container_name: ai-base-test-latest-info
+    command: ["/usr/local/bin/gpu-info"]
+    environment:
+      - GPU_BACKEND=auto
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  test-latest-detect:
+    image: ai-base:latest
+    container_name: ai-base-test-latest-detect
+    command: ["/usr/local/bin/detect-gpu"]
+    environment:
+      - GPU_BACKEND=auto
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  test-latest-validate:
+    image: ai-base:latest
+    container_name: ai-base-test-latest-validate
+    command: ["/usr/local/bin/validate-gpu"]
+    environment:
+      - GPU_BACKEND=auto
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  # Latest with Ollama (auto-detect)
+  latest-ollama:
+    image: ai-base:latest
+    container_name: ai-base-latest-ollama
+    command: ["ollama", "serve"]
+    environment:
+      - GPU_BACKEND=auto
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_MODELS=/models
+    ports:
+      - "11437:11434"
+    volumes:
+      - ai_models_latest:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  # ===========================================================================
+  # EXO Distributed Inference Example (Vulkan)
+  # ===========================================================================
+
+  exo-node-1:
+    image: ai-base:vulkan
+    container_name: ai-base-exo-node-1
+    command: ["python3", "-m", "exo.main", "--node-id", "node1"]
+    environment:
+      - GPU_BACKEND=vulkan
+      - EXO_MODE=distributed
+      - EXO_NODE_ID=node1
+      - EXO_DISCOVERY_PORT=5678
+      - EXO_MODELS=/models
+    ports:
+      - "5678:5678"
+    volumes:
+      - ai_models_exo:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    networks:
+      - exo-cluster
+
+  exo-node-2:
+    image: ai-base:vulkan
+    container_name: ai-base-exo-node-2
+    command: ["python3", "-m", "exo.main", "--node-id", "node2", "--bootstrap", "exo-node-1:5678"]
+    environment:
+      - GPU_BACKEND=vulkan
+      - EXO_MODE=distributed
+      - EXO_NODE_ID=node2
+      - EXO_DISCOVERY_PORT=5679
+      - EXO_MODELS=/models
+    ports:
+      - "5679:5679"
+    volumes:
+      - ai_models_exo:/models
+    depends_on:
+      - exo-node-1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    networks:
+      - exo-cluster
+
+  # ===========================================================================
+  # Comparison Service - Run All Variants Simultaneously
+  # ===========================================================================
+
+  compare-vulkan:
+    image: ai-base:vulkan
+    container_name: ai-base-compare-vulkan
+    command: ["sleep", "infinity"]
+    environment:
+      - GPU_BACKEND=vulkan
+    volumes:
+      - ai_models_compare:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  compare-nvidia:
+    image: ai-base:nvidia
+    container_name: ai-base-compare-nvidia
+    command: ["sleep", "infinity"]
+    environment:
+      - GPU_BACKEND=cuda
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ai_models_compare:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  compare-rocm:
+    image: ai-base:rocm
+    container_name: ai-base-compare-rocm
+    command: ["sleep", "infinity"]
+    environment:
+      - GPU_BACKEND=rocm
+      - HIP_VISIBLE_DEVICES=0
+    volumes:
+      - ai_models_compare:/models
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
+
+volumes:
+  ai_models_vulkan:
+    driver: local
+  ai_models_nvidia:
+    driver: local
+  ai_models_rocm:
+    driver: local
+  ai_models_latest:
+    driver: local
+  ai_models_exo:
+    driver: local
+  ai_models_compare:
+    driver: local
+
+networks:
+  exo-cluster:
+    driver: bridge

@@ -1,0 +1,174 @@
+name: Build AI Base - Latest (Multi-Backend)
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'apps/ai-inference/**'
+      - '.github/workflows/ai-base-latest.yml'
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'apps/ai-inference/**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/ai-base
+  VARIANT: latest
+
+jobs:
+  build-latest:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        flavor: |
+          latest=${{ github.ref == 'refs/heads/main' }}
+        tags: |
+          # Pull request tags
+          type=ref,event=pr
+
+          # Semantic version tags for releases (v1.2.3 → v1.2.3, NOT v1.2.3-latest)
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+
+          # Main branch: latest tag
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+          # Non-main branches: prototype tag (prototype, NOT latest-prototype)
+          type=raw,value=prototype,enable=${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' }}
+
+          # SHA-based tag for tracking
+          type=sha,prefix=latest-,suffix=-{{date 'YYYYMMDD'}},format=short
+
+    - name: Build and push Latest variant
+      uses: docker/build-push-action@v5
+      with:
+        context: ./apps/ai-inference
+        file: ./apps/ai-inference/Dockerfile
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: |
+          ${{ steps.meta.outputs.labels }}
+          variant=all
+          gpu_backend=vulkan,cuda,rocm
+          description=Multi-backend with auto-detection
+        cache-from: type=gha,scope=ai-base-latest
+        cache-to: type=gha,mode=max,scope=ai-base-latest
+        build-args: |
+          GPU_VARIANT=all
+          BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          VCS_REF=${{ github.sha }}
+          VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+
+  test-latest:
+    needs: build-latest
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Pull image
+      run: docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+    - name: Test - GPU info
+      run: docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest /usr/local/bin/gpu-info
+
+    - name: Test - Detect GPU
+      run: docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest /usr/local/bin/detect-gpu
+
+    - name: Test - Check engines
+      run: |
+        docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest bash -c "
+          echo 'Checking Ollama...' && ollama --version
+          echo 'Checking llama.cpp...' && ls -la /opt/ai-base/bin/llama-* | head -3
+          echo 'Checking Vulkan...' && [ -d /opt/vulkan-sdk ] && echo 'Vulkan SDK present'
+          echo 'Checking CUDA...' && [ -d /usr/local/cuda ] && echo 'CUDA toolkit present'
+          echo 'Checking ROCm...' && [ -d /opt/rocm ] && echo 'ROCm toolkit present'
+        "
+
+    - name: Test - Backend selection
+      run: |
+        docker run --rm -e GPU_BACKEND=vulkan ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest /usr/local/bin/select-backend
+        docker run --rm -e GPU_BACKEND=auto ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest /usr/local/bin/select-backend
+
+  security-scan:
+    needs: build-latest
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+    - name: Run Trivy scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        format: 'sarif'
+        output: 'trivy-latest.sarif'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Upload scan results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-latest.sarif'
+        category: ai-base-latest
+
+  create-release:
+    needs: [build-latest, test-latest, security-scan]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: AI Base Layer ${{ github.ref_name }}
+        body: |
+          ## AI Base Layer Release ${{ github.ref_name }}
+
+          **Docker Images:**
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:vulkan` - Universal GPU (Vulkan)
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:nvidia` - NVIDIA CUDA optimized
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:rocm` - AMD ROCm optimized
+          - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest` - Multi-backend
+
+          **Inference Engines:**
+          - Ollama (with Vulkan support)
+          - llama.cpp (all backends)
+          - llm-d (D language implementation)
+          - EXO (distributed inference)
+        draft: false
+        prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}

@@ -412,3 +412,118 @@ info: ## Info - Show project information
 env: ## Info - Show environment variables
 	@echo "$(BLUE)Environment Variables:$(RESET)"
 	@env | grep -E "^(LICENSE_|POSTGRES_|REDIS_|NODE_|GIN_|PY4WEB_)" | sort
+
+# AI Base Layer Commands
+ai-base-build-vulkan: ## Docker - Build AI base vulkan variant
+	@echo "$(BLUE)Building AI base layer (vulkan variant)...$(RESET)"
+	@docker build --build-arg GPU_VARIANT=vulkan \
+		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:vulkan \
+		-t ai-base:vulkan \
+		-f apps/ai-inference/Dockerfile \
+		apps/ai-inference/
+
+ai-base-build-nvidia: ## Docker - Build AI base nvidia variant
+	@echo "$(BLUE)Building AI base layer (nvidia variant)...$(RESET)"
+	@docker build --build-arg GPU_VARIANT=nvidia \
+		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:nvidia \
+		-t ai-base:nvidia \
+		-f apps/ai-inference/Dockerfile \
+		apps/ai-inference/
+
+ai-base-build-rocm: ## Docker - Build AI base rocm variant
+	@echo "$(BLUE)Building AI base layer (rocm variant)...$(RESET)"
+	@docker build --build-arg GPU_VARIANT=rocm \
+		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:rocm \
+		-t ai-base:rocm \
+		-f apps/ai-inference/Dockerfile \
+		apps/ai-inference/
+
+ai-base-build-latest: ## Docker - Build AI base latest variant (multi-backend)
+	@echo "$(BLUE)Building AI base layer (latest/multi-backend variant)...$(RESET)"
+	@docker build --build-arg GPU_VARIANT=all \
+		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:latest \
+		-t ai-base:latest \
+		-f apps/ai-inference/Dockerfile \
+		apps/ai-inference/
+
+ai-base-build-all: ## Docker - Build all AI base layer variants
+	@echo "$(BLUE)Building all AI base layer variants...$(RESET)"
+	@$(MAKE) ai-base-build-vulkan
+	@$(MAKE) ai-base-build-nvidia
+	@$(MAKE) ai-base-build-rocm
+	@$(MAKE) ai-base-build-latest
+	@echo "$(GREEN)All AI base layer variants built successfully!$(RESET)"
+
+ai-base-push-all: ## Docker - Push all AI base layer variants to registry
+	@echo "$(BLUE)Pushing all AI base layer variants...$(RESET)"
+	@docker push $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:vulkan
+	@docker push $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:nvidia
+	@docker push $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:rocm
+	@docker push $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:latest
+	@echo "$(GREEN)All variants pushed to registry!$(RESET)"
+
+ai-base-test-vulkan: ## Docker - Test vulkan variant
+	@echo "$(BLUE)Testing vulkan variant...$(RESET)"
+	@docker run --rm ai-base:vulkan /usr/local/bin/gpu-info
+	@docker run --rm ai-base:vulkan /usr/local/bin/detect-gpu
+
+ai-base-test-nvidia: ## Docker - Test nvidia variant
+	@echo "$(BLUE)Testing nvidia variant...$(RESET)"
+	@docker run --rm ai-base:nvidia /usr/local/bin/gpu-info
+	@docker run --rm ai-base:nvidia /usr/local/bin/detect-gpu
+
+ai-base-test-rocm: ## Docker - Test rocm variant
+	@echo "$(BLUE)Testing rocm variant...$(RESET)"
+	@docker run --rm ai-base:rocm /usr/local/bin/gpu-info
+	@docker run --rm ai-base:rocm /usr/local/bin/detect-gpu
+
+ai-base-test-latest: ## Docker - Test latest variant
+	@echo "$(BLUE)Testing latest (multi-backend) variant...$(RESET)"
+	@docker run --rm ai-base:latest /usr/local/bin/gpu-info
+	@docker run --rm ai-base:latest /usr/local/bin/detect-gpu
+
+ai-base-test-all: ## Docker - Test all AI base layer variants
+	@echo "$(BLUE)Testing all AI base layer variants...$(RESET)"
+	@$(MAKE) ai-base-test-vulkan
+	@$(MAKE) ai-base-test-nvidia
+	@$(MAKE) ai-base-test-rocm
+	@$(MAKE) ai-base-test-latest
+	@echo "$(GREEN)All variants tested successfully!$(RESET)"
+
+ai-base-clean: ## Docker - Clean AI base layer images
+	@echo "$(BLUE)Cleaning AI base layer images...$(RESET)"
+	@docker rmi ai-base:vulkan ai-base:nvidia ai-base:rocm ai-base:latest || true
+	@docker rmi $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:vulkan \
+		$(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:nvidia \
+		$(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:rocm \
+		$(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:latest || true
+	@echo "$(GREEN)AI base layer images cleaned!$(RESET)"
+
+ai-base-info: ## Info - Show AI base layer information
+	@echo "$(BLUE)AI Base Layer Information:$(RESET)"
+	@echo ""
+	@echo "$(GREEN)Available Variants:$(RESET)"
+	@echo "  vulkan  - Universal GPU support (3-4GB)"
+	@echo "  nvidia  - NVIDIA optimized with CUDA (5-6GB)"
+	@echo "  rocm    - AMD optimized with ROCm (8-9GB)"
+	@echo "  latest  - Multi-backend with auto-detection (12-15GB)"
+	@echo ""
+	@echo "$(GREEN)Inference Engines (all variants):$(RESET)"
+	@echo "  - Ollama (with Vulkan support)"
+	@echo "  - llama.cpp"
+	@echo "  - llm-d"
+	@echo "  - EXO (distributed inference)"
+	@echo ""
+	@echo "$(GREEN)Build Commands:$(RESET)"
+	@echo "  make ai-base-build-vulkan  - Build vulkan variant"
+	@echo "  make ai-base-build-nvidia  - Build nvidia variant"
+	@echo "  make ai-base-build-rocm    - Build rocm variant"
+	@echo "  make ai-base-build-latest  - Build latest variant"
+	@echo "  make ai-base-build-all     - Build all variants"
+	@echo ""
+	@echo "$(GREEN)Test Commands:$(RESET)"
+	@echo "  make ai-base-test-all      - Test all variants"
+	@echo ""
+	@echo "$(GREEN)Usage Example:$(RESET)"
+	@echo "  FROM ghcr.io/penguincloud/ai-base:vulkan"
+	@echo "  # Your application code here"
