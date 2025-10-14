@@ -1,17 +1,20 @@
 # Multi-Variant AI Base Layer Image
 # Supports: Ollama, llama.cpp, EXO
-# GPU Backends: Vulkan (default), CUDA (NVIDIA), ROCm (AMD)
+# GPU Backends: Vulkan (default, WORKING), CUDA (NVIDIA, IN PROGRESS), ROCm (AMD, IN PROGRESS)
 #
 # Build variants:
-#   vulkan: docker build --build-arg GPU_VARIANT=vulkan -t ai-base:vulkan .
-#   nvidia: docker build --build-arg GPU_VARIANT=nvidia -t ai-base:nvidia .
-#   rocm:   docker build --build-arg GPU_VARIANT=rocm -t ai-base:rocm .
-#   latest: docker build --build-arg GPU_VARIANT=all -t ai-base:latest .
+#   vulkan: docker build --build-arg GPU_VARIANT=vulkan -t ai-base:vulkan . [WORKING]
+#   nvidia: docker build --build-arg GPU_VARIANT=nvidia -t ai-base:nvidia . [IN PROGRESS - requires Ubuntu base or NVIDIA base image]
+#   rocm:   docker build --build-arg GPU_VARIANT=rocm -t ai-base:rocm . [IN PROGRESS - requires Ubuntu base or AMD base image]
+#   latest: docker build --build-arg GPU_VARIANT=all -t ai-base:latest . [Pending NVIDIA/ROCm fixes]
+#
+# NOTE: NVIDIA and ROCm variants currently skip GPU toolkit installation due to package availability issues on Debian.
+#       For production NVIDIA/ROCm builds, consider using nvidia/cuda or rocm/dev-ubuntu base images.
 
 ARG GPU_VARIANT=vulkan
 ARG DEBIAN_VERSION=stable-slim
 ARG VULKAN_SDK_VERSION=1.3.275
-ARG CUDA_VERSION=12.3.1
+ARG CUDA_VERSION=11.8
 ARG ROCM_VERSION=6.0
 
 # =============================================================================
@@ -90,31 +93,16 @@ ARG CUDA_VERSION
 ARG GPU_VARIANT
 
 # Only install CUDA if building nvidia or all variant
-# Install minimal CUDA runtime and libraries (not full toolkit to avoid dependency issues)
+# NOTE: CUDA packages not available in Debian repos - requires Ubuntu base or nvidia/cuda image
+# Creating placeholder directories for now to allow build to continue
 RUN if [ "$GPU_VARIANT" = "nvidia" ] || [ "$GPU_VARIANT" = "all" ]; then \
-    wget https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/cuda-keyring_1.1-1_all.deb \
-    && dpkg -i cuda-keyring_1.1-1_all.deb \
-    && rm cuda-keyring_1.1-1_all.deb \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        cuda-cudart-12-3 \
-        cuda-nvcc-12-3 \
-        cuda-nvrtc-12-3 \
-        cuda-nvtx-12-3 \
-        cuda-libraries-12-3 \
-        cuda-compiler-12-3 \
-        libnccl2 \
-        libcublas-12-3 \
-        libcufft-12-3 \
-        libcurand-12-3 \
-        libcusolver-12-3 \
-        libcusparse-12-3 \
-    && (apt-get install -y --no-install-recommends libcudnn8 || echo "cuDNN not available, skipping") \
-    && rm -rf /var/lib/apt/lists/* \
-    && echo "CUDA installed"; \
+    echo "WARNING: CUDA installation skipped - Debian repos do not contain CUDA packages" && \
+    echo "For CUDA support, use nvidia/cuda base image or Ubuntu-based build" && \
+    mkdir -p /usr/local/cuda/{bin,lib64,include} && \
+    echo "CUDA placeholders created"; \
     else \
-    echo "Skipping CUDA installation for variant: $GPU_VARIANT" \
-    && mkdir -p /usr/local/cuda; \
+    echo "Skipping CUDA installation for variant: $GPU_VARIANT" && \
+    mkdir -p /usr/local/cuda; \
     fi
 
 ENV CUDA_HOME="/usr/local/cuda" \
@@ -130,22 +118,16 @@ ARG ROCM_VERSION
 ARG GPU_VARIANT
 
 # Only install ROCm if building rocm or all variant
+# NOTE: ROCm packages not available for Debian - requires Ubuntu base or rocm/dev-ubuntu image
+# Creating placeholder directories for now to allow build to continue
 RUN if [ "$GPU_VARIANT" = "rocm" ] || [ "$GPU_VARIANT" = "all" ]; then \
-    wget -O /tmp/rocm-install.sh https://repo.radeon.com/amdgpu-install/6.0/ubuntu/jammy/amdgpu-install_6.0.60000-1_all.deb \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-        rocm-hip-sdk \
-        rocm-libs \
-        rocm-dev \
-        rocblas \
-        hipblas \
-        rocrand \
-        rocsparse \
-    && rm -rf /var/lib/apt/lists/* \
-    && echo "ROCm installed"; \
+    echo "WARNING: ROCm installation skipped - Debian not officially supported by AMD" && \
+    echo "For ROCm support, use rocm/dev-ubuntu base image or Ubuntu-based build" && \
+    mkdir -p /opt/rocm/{bin,lib,include} && \
+    echo "ROCm placeholders created"; \
     else \
-    echo "Skipping ROCm installation for variant: $GPU_VARIANT" \
-    && mkdir -p /opt/rocm; \
+    echo "Skipping ROCm installation for variant: $GPU_VARIANT" && \
+    mkdir -p /opt/rocm; \
     fi
 
 ENV ROCM_PATH="/opt/rocm" \
@@ -166,30 +148,21 @@ RUN git clone https://github.com/ggerganov/llama.cpp.git . \
     && git checkout master
 
 # Build llama.cpp based on variant (using newer GGML_ prefix)
-# Note: CUDA builds use GCC-12 for compatibility with CUDA 12.3
+# NOTE: NVIDIA and ROCm variants fall back to Vulkan since GPU toolkits aren't available on Debian
 RUN if [ "$GPU_VARIANT" = "vulkan" ]; then \
         cmake -B build -S . -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release && \
         cmake --build build --config Release -j$(nproc); \
     elif [ "$GPU_VARIANT" = "nvidia" ]; then \
-        export CC=/usr/bin/gcc-12 && \
-        export CXX=/usr/bin/g++-12 && \
-        export CUDAHOSTCXX=/usr/bin/g++-12 && \
-        cmake -B build -S . -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=/usr/bin/gcc-12 \
-            -DCMAKE_CXX_COMPILER=/usr/bin/g++-12 \
-            -DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++-12 && \
+        echo "WARNING: Building with Vulkan backend (CUDA toolkit not available)" && \
+        cmake -B build -S . -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release && \
         cmake --build build --config Release -j$(nproc); \
     elif [ "$GPU_VARIANT" = "rocm" ]; then \
-        cmake -B build -S . -DGGML_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release && \
+        echo "WARNING: Building with Vulkan backend (ROCm toolkit not available)" && \
+        cmake -B build -S . -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release && \
         cmake --build build --config Release -j$(nproc); \
     elif [ "$GPU_VARIANT" = "all" ]; then \
-        export CC=/usr/bin/gcc-12 && \
-        export CXX=/usr/bin/g++-12 && \
-        export CUDAHOSTCXX=/usr/bin/g++-12 && \
-        cmake -B build -S . -DGGML_VULKAN=ON -DGGML_CUDA=ON -DGGML_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=/usr/bin/gcc-12 \
-            -DCMAKE_CXX_COMPILER=/usr/bin/g++-12 \
-            -DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++-12 && \
+        echo "WARNING: Building with Vulkan backend (CUDA/ROCm toolkits not available)" && \
+        cmake -B build -S . -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release && \
         cmake --build build --config Release -j$(nproc); \
     fi
 
