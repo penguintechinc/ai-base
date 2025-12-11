@@ -2,14 +2,16 @@
 
 This guide helps you choose and use the right docker-compose file for your GPU setup.
 
+**Base OS:** All images are built on Ubuntu 24.04 LTS (Noble) for optimal size and package availability.
+
 ## Quick Reference
 
 | File | GPU Type | Use Case | Status |
 |------|----------|----------|--------|
 | `docker-compose.ai-base-vulkan.yml` | Universal (Intel/AMD/NVIDIA) | Production - Best compatibility | ✅ Working |
-| `docker-compose.ai-base-nvidia.yml` | NVIDIA CUDA | Production - NVIDIA GPUs | ⚠️ Vulkan fallback |
-| `docker-compose.ai-base-rocm.yml` | AMD ROCm | Production - AMD GPUs | ⚠️ Vulkan fallback |
-| `docker-compose.ai-base-latest.yml` | Multi-backend | Production - Auto-detection | ⚠️ Vulkan fallback |
+| `docker-compose.ai-base-nvidia.yml` | NVIDIA CUDA 12.6 | Production - NVIDIA GPUs | ✅ Native CUDA |
+| `docker-compose.ai-base-rocm.yml` | AMD ROCm 6.2 | Production - AMD GPUs | ✅ Native ROCm |
+| `docker-compose.ai-base-latest.yml` | Multi-backend (CUDA + ROCm) | Production - Auto-detection | ✅ Manual install |
 | `docker-compose.ai-base.yml` | All variants | Testing & comparison | ✅ Working |
 
 ## Production Usage
@@ -34,10 +36,10 @@ docker exec -it ai-base-vulkan bash
 
 ### NVIDIA Variant
 
-**Best for:** NVIDIA GPUs (currently uses Vulkan fallback)
+**Best for:** NVIDIA GPUs with native CUDA 12.6 support (Ubuntu 24.04)
 
 **Requirements:**
-- NVIDIA GPU
+- NVIDIA GPU with CUDA compute capability 5.0+
 - NVIDIA Container Toolkit installed
 - `nvidia-container-runtime` configured
 
@@ -54,11 +56,11 @@ curl http://localhost:11435/api/tags
 
 ### ROCm Variant
 
-**Best for:** AMD GPUs (currently uses Vulkan fallback)
+**Best for:** AMD GPUs with native ROCm 6.2 support (Ubuntu 24.04)
 
 **Requirements:**
-- AMD GPU with ROCm support
-- ROCm drivers installed
+- AMD GPU with ROCm support (gfx900+ architecture)
+- ROCm drivers installed (6.2 or compatible)
 - User in `video` and `render` groups
 
 ```bash
@@ -77,7 +79,9 @@ curl http://localhost:11436/api/tags
 
 ### Latest Variant (Multi-Backend)
 
-**Best for:** Systems with mixed GPUs or auto-detection needs
+**Best for:** Systems with mixed GPUs or auto-detection needs (Ubuntu 24.04 with CUDA 12.6 + ROCm 6.2)
+
+**Note:** This image contains both CUDA and ROCm toolkits for maximum flexibility. Size: ~15-18GB
 
 ```bash
 # Start the base container

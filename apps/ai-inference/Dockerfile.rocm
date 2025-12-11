@@ -2,12 +2,12 @@
 # Based on official AMD ROCm image with native ROCm support
 # Supports: Ollama (ROCm), llama.cpp (ROCm/HIP), EXO (ROCm)
 #
-# NOTE: AMD provides Ubuntu-based ROCm images only
-# ROCm support on Debian requires manual installation from source
+# NOTE: Using Ubuntu 24.04 LTS (Noble) for optimal size and latest ROCm support
+# ROCm 6.2+ supports Ubuntu 24.04 LTS
 #
 # Build: docker build -f Dockerfile.rocm -t ai-base:rocm .
 
-FROM rocm/dev-ubuntu-22.04:6.0 AS base-system
+FROM rocm/dev-ubuntu-24.04:6.2 AS base-system
 
 LABEL maintainer="Penguin Tech Group LLC <info@penguintech.group>"
 LABEL org.opencontainers.image.source="https://github.com/penguincloud/ai-base"
@@ -93,14 +93,14 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     torch \
     numpy
 
-# Install ROCm-specific PyTorch
+# Install ROCm-specific PyTorch (rocm6.2 for ROCm 6.x compatibility)
 RUN pip3 install --no-cache-dir --break-system-packages \
-    torch --index-url https://download.pytorch.org/whl/rocm5.7
+    torch --index-url https://download.pytorch.org/whl/rocm6.2
 
 # =============================================================================
 # Stage 5: Final Runtime Image
 # =============================================================================
-FROM rocm/dev-ubuntu-22.04:6.0 AS runtime
+FROM rocm/dev-ubuntu-24.04:6.2 AS runtime
 
 LABEL variant="rocm"
 LABEL engines="ollama,llama.cpp,exo"
@@ -134,7 +134,7 @@ COPY --from=build-llamacpp /opt/ai-base/bin/* /opt/ai-base/bin/
 COPY --from=build-ollama /opt/ai-base/bin/ollama /opt/ai-base/bin/
 
 # Copy Python packages for EXO
-COPY --from=build-exo /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
+COPY --from=build-exo /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
 
 # Create model directories
 RUN mkdir -p /models/{ollama,llama,exo} \

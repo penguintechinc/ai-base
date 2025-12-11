@@ -454,12 +454,12 @@ ai-base-build-rocm-native: ## Docker - Build AI base rocm variant with native RO
 		-f apps/ai-inference/Dockerfile.rocm \
 		apps/ai-inference/
 
-ai-base-build-latest: ## Docker - Build AI base latest variant (multi-backend)
-	@echo "$(BLUE)Building AI base layer (latest/multi-backend variant)...$(RESET)"
-	@docker build --build-arg GPU_VARIANT=all \
+ai-base-build-latest: ## Docker - Build AI base latest variant (multi-backend with CUDA and ROCm)
+	@echo "$(BLUE)Building AI base layer (latest/multi-backend variant with manual CUDA/ROCm installation)...$(RESET)"
+	@docker build \
 		-t $(DOCKER_REGISTRY)/$(DOCKER_ORG)/ai-base:latest \
 		-t ai-base:latest \
-		-f apps/ai-inference/Dockerfile \
+		-f apps/ai-inference/Dockerfile.latest \
 		apps/ai-inference/
 
 ai-base-build-all: ## Docker - Build all AI base layer variants (native GPU support)
@@ -526,24 +526,25 @@ ai-base-clean: ## Docker - Clean AI base layer images
 ai-base-info: ## Info - Show AI base layer information
 	@echo "$(BLUE)AI Base Layer Information:$(RESET)"
 	@echo ""
+	@echo "$(GREEN)Base OS:$(RESET) Ubuntu 24.04 LTS (Noble)"
+	@echo ""
 	@echo "$(GREEN)Available Variants:$(RESET)"
-	@echo "  vulkan  - Universal GPU support (3-4GB)"
-	@echo "  nvidia  - NVIDIA optimized with CUDA (5-6GB)"
-	@echo "  rocm    - AMD optimized with ROCm (8-9GB)"
-	@echo "  latest  - Multi-backend with auto-detection (12-15GB)"
+	@echo "  vulkan  - Universal GPU support via Vulkan (Ubuntu 24.04, ~3-4GB)"
+	@echo "  nvidia  - NVIDIA GPU with native CUDA 12.6 (Ubuntu 24.04, ~5-6GB)"
+	@echo "  rocm    - AMD GPU with native ROCm 6.2 (Ubuntu 24.04, ~8-9GB)"
+	@echo "  latest  - Multi-backend with CUDA and ROCm (Ubuntu 24.04, ~15-18GB)"
 	@echo ""
 	@echo "$(GREEN)Inference Engines (all variants):$(RESET)"
-	@echo "  - Ollama (with Vulkan support)"
-	@echo "  - llama.cpp"
-	@echo "  - llm-d"
-	@echo "  - EXO (distributed inference)"
+	@echo "  - Ollama (with GPU auto-detection)"
+	@echo "  - llama.cpp (compiled for each backend)"
+	@echo "  - EXO (distributed inference with PyTorch)"
 	@echo ""
 	@echo "$(GREEN)Build Commands:$(RESET)"
-	@echo "  make ai-base-build-vulkan  - Build vulkan variant"
-	@echo "  make ai-base-build-nvidia  - Build nvidia variant"
-	@echo "  make ai-base-build-rocm    - Build rocm variant"
-	@echo "  make ai-base-build-latest  - Build latest variant"
-	@echo "  make ai-base-build-all     - Build all variants"
+	@echo "  make ai-base-build-vulkan       - Build vulkan variant (Dockerfile)"
+	@echo "  make ai-base-build-nvidia-cuda  - Build nvidia variant (Dockerfile.nvidia)"
+	@echo "  make ai-base-build-rocm-native  - Build rocm variant (Dockerfile.rocm)"
+	@echo "  make ai-base-build-latest       - Build latest variant (Dockerfile.latest)"
+	@echo "  make ai-base-build-all          - Build all variants with native GPU support"
 	@echo ""
 	@echo "$(GREEN)Test Commands:$(RESET)"
 	@echo "  make ai-base-test-all      - Test all variants"

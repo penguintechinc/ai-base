@@ -1,26 +1,26 @@
 # Multi-Variant AI Base Layer Image
 # Supports: Ollama, llama.cpp, EXO
-# GPU Backends: Vulkan (default, WORKING), CUDA (NVIDIA, IN PROGRESS), ROCm (AMD, IN PROGRESS)
+# GPU Backends: Vulkan (default, WORKING)
 #
 # Build variants:
 #   vulkan: docker build --build-arg GPU_VARIANT=vulkan -t ai-base:vulkan . [WORKING]
-#   nvidia: docker build --build-arg GPU_VARIANT=nvidia -t ai-base:nvidia . [IN PROGRESS - requires Ubuntu base or NVIDIA base image]
-#   rocm:   docker build --build-arg GPU_VARIANT=rocm -t ai-base:rocm . [IN PROGRESS - requires Ubuntu base or AMD base image]
-#   latest: docker build --build-arg GPU_VARIANT=all -t ai-base:latest . [Pending NVIDIA/ROCm fixes]
+#   nvidia: Use Dockerfile.nvidia for native CUDA support
+#   rocm:   Use Dockerfile.rocm for native ROCm support
+#   latest: Use Dockerfile.latest for combined multi-backend support
 #
-# NOTE: NVIDIA and ROCm variants currently skip GPU toolkit installation due to package availability issues on Debian.
-#       For production NVIDIA/ROCm builds, consider using nvidia/cuda or rocm/dev-ubuntu base images.
+# NOTE: This Dockerfile provides Vulkan-only support for universal GPU compatibility.
+#       For native CUDA/ROCm builds, use the dedicated Dockerfile.nvidia or Dockerfile.rocm files.
 
 ARG GPU_VARIANT=vulkan
-ARG DEBIAN_VERSION=stable-slim
+ARG UBUNTU_VERSION=24.04
 ARG VULKAN_SDK_VERSION=1.3.275
-ARG CUDA_VERSION=11.8
-ARG ROCM_VERSION=6.0
+ARG CUDA_VERSION=12.6
+ARG ROCM_VERSION=6.2
 
 # =============================================================================
 # Stage 1: Base System Dependencies
 # =============================================================================
-FROM debian:${DEBIAN_VERSION} AS base-system
+FROM ubuntu:${UBUNTU_VERSION} AS base-system
 
 LABEL maintainer="Penguin Tech Group LLC <info@penguintech.group>"
 LABEL org.opencontainers.image.source="https://github.com/penguincloud/ai-base"
@@ -93,11 +93,11 @@ ARG CUDA_VERSION
 ARG GPU_VARIANT
 
 # Only install CUDA if building nvidia or all variant
-# NOTE: CUDA packages not available in Debian repos - requires Ubuntu base or nvidia/cuda image
-# Creating placeholder directories for now to allow build to continue
+# NOTE: For CUDA support in this Dockerfile, see Dockerfile.nvidia which uses nvidia/cuda base image
+# This Vulkan-only build creates placeholder directories
 RUN if [ "$GPU_VARIANT" = "nvidia" ] || [ "$GPU_VARIANT" = "all" ]; then \
-    echo "WARNING: CUDA installation skipped - Debian repos do not contain CUDA packages" && \
-    echo "For CUDA support, use nvidia/cuda base image or Ubuntu-based build" && \
+    echo "WARNING: CUDA installation skipped in Vulkan-only build" && \
+    echo "For native CUDA support, use Dockerfile.nvidia" && \
     mkdir -p /usr/local/cuda/{bin,lib64,include} && \
     echo "CUDA placeholders created"; \
     else \
@@ -118,11 +118,11 @@ ARG ROCM_VERSION
 ARG GPU_VARIANT
 
 # Only install ROCm if building rocm or all variant
-# NOTE: ROCm packages not available for Debian - requires Ubuntu base or rocm/dev-ubuntu image
-# Creating placeholder directories for now to allow build to continue
+# NOTE: For ROCm support in this Dockerfile, see Dockerfile.rocm which uses rocm/dev-ubuntu base image
+# This Vulkan-only build creates placeholder directories
 RUN if [ "$GPU_VARIANT" = "rocm" ] || [ "$GPU_VARIANT" = "all" ]; then \
-    echo "WARNING: ROCm installation skipped - Debian not officially supported by AMD" && \
-    echo "For ROCm support, use rocm/dev-ubuntu base image or Ubuntu-based build" && \
+    echo "WARNING: ROCm installation skipped in Vulkan-only build" && \
+    echo "For native ROCm support, use Dockerfile.rocm" && \
     mkdir -p /opt/rocm/{bin,lib,include} && \
     echo "ROCm placeholders created"; \
     else \
@@ -148,7 +148,8 @@ RUN git clone https://github.com/ggerganov/llama.cpp.git . \
     && git checkout master
 
 # Build llama.cpp based on variant (using newer GGML_ prefix)
-# NOTE: NVIDIA and ROCm variants fall back to Vulkan since GPU toolkits aren't available on Debian
+# NOTE: This Vulkan-only Dockerfile always builds with Vulkan support
+#       For native CUDA/ROCm builds, use Dockerfile.nvidia or Dockerfile.rocm
 RUN if [ "$GPU_VARIANT" = "vulkan" ]; then \
         cmake -B build -S . -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release && \
         cmake --build build --config Release -j$(nproc); \
@@ -215,7 +216,7 @@ RUN if [ "$GPU_VARIANT" = "vulkan" ]; then \
 # =============================================================================
 # Stage 8: Final Runtime Image
 # =============================================================================
-FROM debian:${DEBIAN_VERSION} AS runtime
+FROM ubuntu:${UBUNTU_VERSION} AS runtime
 
 ARG GPU_VARIANT=vulkan
 
@@ -260,8 +261,8 @@ COPY --from=build-llamacpp /opt/ai-base/bin/* /opt/ai-base/bin/
 COPY --from=build-ollama /opt/ai-base/bin/ollama /opt/ai-base/bin/
 
 # Copy Python packages for EXO
-# Note: Python version in Debian stable-slim is 3.13
-COPY --from=build-exo /usr/local/lib/python3.13/dist-packages /usr/local/lib/python3.13/dist-packages
+# Note: Python version in Ubuntu 24.04 LTS is 3.12
+COPY --from=build-exo /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
 
 # Create model directories
 RUN mkdir -p /models/{ollama,llama,exo} \

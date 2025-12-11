@@ -2,13 +2,12 @@
 # Based on official NVIDIA CUDA image with native CUDA support
 # Supports: Ollama (CUDA), llama.cpp (CUDA), EXO (CUDA)
 #
-# NOTE: NVIDIA provides both Debian and Ubuntu CUDA images
-# Using Ubuntu 22.04 as it has better package availability
-# Debian option: nvidia/cuda:12.3.1-devel-debian12 (if preferred)
+# NOTE: Using Ubuntu 24.04 LTS (Noble) for optimal size and package availability
+# CUDA 12.6+ supports Ubuntu 24.04 LTS
 #
 # Build: docker build -f Dockerfile.nvidia -t ai-base:nvidia .
 
-FROM nvidia/cuda:12.3.1-devel-ubuntu22.04 AS base-system
+FROM nvidia/cuda:12.6.0-devel-ubuntu24.04 AS base-system
 
 LABEL maintainer="Penguin Tech Group LLC <info@penguintech.group>"
 LABEL org.opencontainers.image.source="https://github.com/penguincloud/ai-base"
@@ -93,14 +92,14 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     torch \
     numpy
 
-# Install CUDA-specific PyTorch
+# Install CUDA-specific PyTorch (cu124 for CUDA 12.x compatibility)
 RUN pip3 install --no-cache-dir --break-system-packages \
-    torch --index-url https://download.pytorch.org/whl/cu121
+    torch --index-url https://download.pytorch.org/whl/cu124
 
 # =============================================================================
 # Stage 5: Final Runtime Image
 # =============================================================================
-FROM nvidia/cuda:12.3.1-runtime-ubuntu22.04 AS runtime
+FROM nvidia/cuda:12.6.0-runtime-ubuntu24.04 AS runtime
 
 LABEL variant="nvidia"
 LABEL engines="ollama,llama.cpp,exo"
@@ -133,7 +132,7 @@ COPY --from=build-llamacpp /opt/ai-base/bin/* /opt/ai-base/bin/
 COPY --from=build-ollama /opt/ai-base/bin/ollama /opt/ai-base/bin/
 
 # Copy Python packages for EXO
-COPY --from=build-exo /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
+COPY --from=build-exo /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
 
 # Create model directories
 RUN mkdir -p /models/{ollama,llama,exo} \

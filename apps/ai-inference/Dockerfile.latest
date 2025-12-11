@@ -1,0 +1,280 @@
+# Multi-Backend AI Base Layer Image
+# Based on Ubuntu 24.04 LTS with manually installed CUDA and ROCm
+# Supports: Ollama (all backends), llama.cpp (CUDA/ROCm/Vulkan), EXO (CUDA/ROCm)
+#
+# NOTE: This image contains both CUDA and ROCm toolkits for maximum compatibility
+# Use variant-specific Dockerfiles for smaller, single-backend images
+#
+# Build: docker build -f Dockerfile.latest -t ai-base:latest .
+
+FROM ubuntu:24.04 AS base-system
+
+LABEL maintainer="Penguin Tech Group LLC <info@penguintech.group>"
+LABEL org.opencontainers.image.source="https://github.com/penguincloud/ai-base"
+LABEL org.opencontainers.image.description="Multi-backend AI inference base layer with CUDA and ROCm"
+LABEL org.opencontainers.image.licenses="AGPL-3.0"
+LABEL variant="latest"
+LABEL engines="ollama,llama.cpp,exo"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PATH="/opt/ai-base/bin:/usr/local/cuda/bin:/opt/rocm/bin:/usr/local/bin:$PATH" \
+    LD_LIBRARY_PATH="/opt/ai-base/lib:/usr/local/cuda/lib64:/opt/rocm/lib:$LD_LIBRARY_PATH"
+
+# Install common dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    libcurl4-openssl-dev \
+    wget \
+    git \
+    cmake \
+    ninja-build \
+    pkg-config \
+    libgomp1 \
+    libopenblas-dev \
+    python3 \
+    python3-pip \
+    python3-venv \
+    pciutils \
+    lshw \
+    jq \
+    gnupg2 \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directories
+RUN mkdir -p /opt/ai-base/{bin,lib,scripts,models} \
+    && mkdir -p /usr/local/share/ai-base
+
+# =============================================================================
+# Stage 2: Install Vulkan SDK
+# =============================================================================
+FROM base-system AS vulkan-sdk
+
+# Install Vulkan runtime and development libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libvulkan1 \
+    libvulkan-dev \
+    vulkan-tools \
+    vulkan-validationlayers \
+    spirv-tools \
+    glslang-tools \
+    glslc \
+    libshaderc-dev \
+    mesa-vulkan-drivers \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV VK_LAYER_PATH="/usr/share/vulkan/explicit_layer.d" \
+    VK_ICD_FILENAMES="/usr/share/vulkan/icd.d/radeon_icd.x86_64.json:/usr/share/vulkan/icd.d/intel_icd.x86_64.json" \
+    LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+
+# =============================================================================
+# Stage 3: Install NVIDIA CUDA Toolkit
+# =============================================================================
+FROM vulkan-sdk AS cuda-toolkit
+
+# Add NVIDIA package repositories
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    rm cuda-keyring_1.1-1_all.deb
+
+# Install CUDA Toolkit 12.6
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cuda-toolkit-12-6 \
+    cuda-nvcc-12-6 \
+    cuda-libraries-dev-12-6 \
+    cuda-libraries-12-6 \
+    libcublas-12-6 \
+    libcublas-dev-12-6 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CUDA_HOME="/usr/local/cuda" \
+    CUDA_PATH="/usr/local/cuda" \
+    PATH="/usr/local/cuda/bin:$PATH" \
+    LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+
+# =============================================================================
+# Stage 4: Install AMD ROCm
+# =============================================================================
+FROM cuda-toolkit AS rocm-toolkit
+
+# Add ROCm package repositories
+RUN wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - && \
+    echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.2 noble main" > /etc/apt/sources.list.d/rocm.list
+
+# Install ROCm 6.2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    rocm-dev \
+    rocm-libs \
+    rocm-utils \
+    hip-dev \
+    hipblas-dev \
+    rocblas-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ROCM_PATH="/opt/rocm" \
+    HIP_PATH="/opt/rocm" \
+    PATH="/opt/rocm/bin:$PATH" \
+    LD_LIBRARY_PATH="/opt/rocm/lib:$LD_LIBRARY_PATH" \
+    HSA_OVERRIDE_GFX_VERSION=10.3.0
+
+# =============================================================================
+# Stage 5: Build llama.cpp with CUDA and ROCm support
+# =============================================================================
+FROM rocm-toolkit AS build-llamacpp
+
+WORKDIR /tmp/llama-build
+
+# Clone llama.cpp
+RUN git clone https://github.com/ggerganov/llama.cpp.git . && \
+    git checkout master
+
+# Build llama.cpp with both CUDA and ROCm support
+# Build separate binaries for each backend
+RUN mkdir -p /opt/ai-base/bin
+
+# Build CUDA version
+RUN cmake -B build-cuda -S . \
+    -DGGML_CUDA=ON \
+    -DGGML_VULKAN=ON \
+    -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build-cuda --config Release -j$(nproc) && \
+    if [ -d build-cuda/bin ]; then \
+        for f in build-cuda/bin/*; do \
+            cp "$f" "/opt/ai-base/bin/$(basename $f)-cuda"; \
+        done; \
+    else \
+        find build-cuda -name "llama-*" -type f -executable -exec sh -c 'cp "$1" "/opt/ai-base/bin/$(basename $1)-cuda"' _ {} \;; \
+    fi
+
+# Build ROCm version
+RUN cmake -B build-rocm -S . \
+    -DGGML_HIPBLAS=ON \
+    -DGGML_VULKAN=ON \
+    -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build-rocm --config Release -j$(nproc) && \
+    if [ -d build-rocm/bin ]; then \
+        for f in build-rocm/bin/*; do \
+            cp "$f" "/opt/ai-base/bin/$(basename $f)-rocm"; \
+        done; \
+    else \
+        find build-rocm -name "llama-*" -type f -executable -exec sh -c 'cp "$1" "/opt/ai-base/bin/$(basename $1)-rocm"' _ {} \;; \
+    fi
+
+# Build Vulkan version (default)
+RUN cmake -B build-vulkan -S . \
+    -DGGML_VULKAN=ON \
+    -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build-vulkan --config Release -j$(nproc) && \
+    if [ -d build-vulkan/bin ]; then \
+        cp build-vulkan/bin/* /opt/ai-base/bin/; \
+    else \
+        find build-vulkan -name "llama-*" -type f -executable -exec cp {} /opt/ai-base/bin/ \;; \
+    fi
+
+# =============================================================================
+# Stage 6: Install Ollama
+# =============================================================================
+FROM rocm-toolkit AS build-ollama
+
+# Install Ollama (auto-detects CUDA and ROCm)
+RUN curl -fsSL https://ollama.com/install.sh | sh && \
+    mkdir -p /opt/ai-base/bin && \
+    cp /usr/local/bin/ollama /opt/ai-base/bin/
+
+# =============================================================================
+# Stage 7: Install EXO with multi-backend PyTorch
+# =============================================================================
+FROM rocm-toolkit AS build-exo
+
+# Install EXO with base dependencies
+RUN pip3 install --no-cache-dir --break-system-packages \
+    exo-lang \
+    numpy
+
+# Install PyTorch with CUDA support (ROCm wheels are larger, install separately if needed)
+RUN pip3 install --no-cache-dir --break-system-packages \
+    torch --index-url https://download.pytorch.org/whl/cu124
+
+# =============================================================================
+# Stage 8: Final Runtime Image
+# =============================================================================
+FROM ubuntu:24.04 AS runtime
+
+LABEL variant="latest"
+LABEL engines="ollama,llama.cpp,exo"
+LABEL backends="cuda,rocm,vulkan"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    GPU_VARIANT=all \
+    GPU_BACKEND=auto \
+    PATH="/opt/ai-base/bin:/usr/local/cuda/bin:/opt/rocm/bin:/usr/local/bin:$PATH" \
+    LD_LIBRARY_PATH="/opt/ai-base/lib:/usr/local/cuda/lib64:/opt/rocm/lib:$LD_LIBRARY_PATH" \
+    CUDA_HOME="/usr/local/cuda" \
+    ROCM_PATH="/opt/rocm" \
+    VK_LAYER_PATH="/usr/share/vulkan/explicit_layer.d"
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    libopenblas0 \
+    python3 \
+    python3-pip \
+    curl \
+    wget \
+    jq \
+    pciutils \
+    lshw \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Vulkan libraries
+COPY --from=vulkan-sdk /usr/lib/x86_64-linux-gnu/libvulkan* /usr/lib/x86_64-linux-gnu/
+COPY --from=vulkan-sdk /usr/bin/vulkaninfo /usr/bin/
+COPY --from=vulkan-sdk /usr/share/vulkan /usr/share/vulkan
+
+# Copy CUDA runtime libraries
+COPY --from=cuda-toolkit /usr/local/cuda/lib64 /usr/local/cuda/lib64
+COPY --from=cuda-toolkit /usr/local/cuda/bin /usr/local/cuda/bin
+COPY --from=cuda-toolkit /usr/local/cuda/include /usr/local/cuda/include
+
+# Copy ROCm runtime libraries
+COPY --from=rocm-toolkit /opt/rocm /opt/rocm
+
+# Copy all built binaries
+COPY --from=build-llamacpp /opt/ai-base/bin/* /opt/ai-base/bin/
+COPY --from=build-ollama /opt/ai-base/bin/ollama /opt/ai-base/bin/
+
+# Copy Python packages for EXO
+COPY --from=build-exo /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
+
+# Create model directories
+RUN mkdir -p /models/{ollama,llama,exo} && \
+    chmod -R 777 /models
+
+# Copy helper scripts
+COPY scripts/*.sh /opt/ai-base/scripts/
+RUN chmod +x /opt/ai-base/scripts/*.sh && \
+    ln -s /opt/ai-base/scripts/detect-gpu.sh /usr/local/bin/detect-gpu && \
+    ln -s /opt/ai-base/scripts/select-backend.sh /usr/local/bin/select-backend && \
+    ln -s /opt/ai-base/scripts/validate-gpu.sh /usr/local/bin/validate-gpu && \
+    ln -s /opt/ai-base/scripts/gpu-info.sh /usr/local/bin/gpu-info
+
+# Set environment for multi-backend
+RUN echo "export GPU_BACKEND=auto" >> /etc/environment
+
+# Environment variables for model paths
+ENV OLLAMA_MODELS=/models/ollama \
+    LLAMA_MODELS=/models/llama \
+    EXO_MODELS=/models/exo \
+    LOG_LEVEL=info
+
+WORKDIR /workspace
+
+# Default command shows GPU info and auto-detects backend
+CMD ["/usr/local/bin/gpu-info"]

@@ -3,8 +3,24 @@ name: Continuous Integration
 on:
   push:
     branches: [ main, develop, feature/* ]
+    paths:
+      - '.version'
+      - '**/*.go'
+      - '**/*.py'
+      - '**/*.js'
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - '.version'
+      - '**/*.go'
+      - '**/*.py'
+      - '**/*.js'
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '.github/workflows/ci.yml'
   schedule:
     # Run tests daily at 2 AM UTC
     - cron: '0 2 * * *'
@@ -16,6 +32,29 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  # Version detection from .version file
+  version-detect:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.detect.outputs.version }}
+      epoch64: ${{ steps.detect.outputs.epoch64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect version from .version file
+        id: detect
+        run: |
+          if [ -f .version ]; then
+            VERSION=$(cat .version | tr -d '[:space:]')
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "Version detected: ${VERSION}"
+          else
+            VERSION="0.0.0.$(date +%s)"
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "No .version file found, using epoch timestamp: ${VERSION}"
+          fi
+          EPOCH64=$(date +%s)
+          echo "epoch64=${EPOCH64}" >> $GITHUB_OUTPUT
+
   # Changes detection to skip unnecessary jobs
   changes:
     runs-on: ubuntu-latest
@@ -101,6 +140,13 @@ jobs:
         version: "2023.1.7"
         install-go: false
 
+    - name: Run gosec security scan
+      run: |
+        echo "Running gosec security scan..."
+        go install github.com/securego/gosec/v2/cmd/gosec@latest
+        gosec -fmt json -out gosec-results.json ./... || echo "⚠️ Security issues detected - review required"
+        cat gosec-results.json || true
+
     - name: Run tests
       run: |
         go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
@@ -173,7 +219,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-asyncio black isort flake8 mypy
+        pip install pytest pytest-cov pytest-asyncio black isort flake8 mypy bandit
 
     - name: Run Black (code formatting)
       run: black --check --diff .
@@ -186,6 +232,13 @@ jobs:
 
     - name: Run mypy (type checking)
       run: mypy . --ignore-missing-imports
+      continue-on-error: true
+
+    - name: Run bandit security scan
+      run: |
+        echo "Running bandit security scan..."
+        bandit -r . -f json -o bandit-results.json || echo "⚠️ Security issues detected - review required"
+        cat bandit-results.json || true
       continue-on-error: true
 
     - name: Run tests with pytest
@@ -227,6 +280,12 @@ jobs:
       run: |
         npm ci
         cd web && npm ci
+
+    - name: Run npm audit (dependency security scan)
+      run: |
+        echo "Running npm audit security scan..."
+        npm audit --production --audit-level=moderate || echo "⚠️ Security issues detected - review required"
+      continue-on-error: true
 
     - name: Run ESLint
       run: npm run lint
