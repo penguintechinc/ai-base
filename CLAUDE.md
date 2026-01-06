@@ -1,13 +1,18 @@
-# Project Template - Claude Code Context
+# AI-Base - Claude Code Context
 
 ## Project Overview
 
-This is a comprehensive project template incorporating best practices and patterns from Penguin Tech Inc projects. It provides a standardized foundation for multi-language projects with enterprise-grade infrastructure and integrated licensing.
+AI-Base is a comprehensive multi-language AI infrastructure template incorporating best practices and patterns from Penguin Tech Inc. It provides a production-ready foundation for building AI-powered applications with Go, Python, and Node.js components, including CI/CD pipelines, security scanning, and integrated licensing.
 
-**Template Features:**
+**Key Features:**
 - Multi-language support (Go 1.23.x, Python 3.12/3.13, Node.js 18+)
+- AI inference service integration (separate container)
+- Multi-language security scanning (gosec, bandit, npm audit)
+- Version detection and automatic release management
+- Epoch64 timestamp-based build tracking
+- Multi-platform Docker builds (amd64/arm64)
 - Enterprise security and licensing integration
-- Comprehensive CI/CD pipeline
+- Comprehensive CI/CD pipeline with parallel execution
 - Production-ready containerization
 - Monitoring and observability
 - Version management system
@@ -31,7 +36,7 @@ This is a comprehensive project template incorporating best practices and patter
 **Python Stack:**
 - **Python**: 3.13 for all applications (3.12+ minimum)
 - **Web Framework**: Flask + Flask-Security-Too (mandatory)
-- **Database ORM**: PyDAL (mandatory for all Python applications)
+- **Database**: SQLAlchemy (initialization), PyDAL (day-to-day operations)
 - **Performance**: Dataclasses with slots, type hints, async/await required
 
 **Frontend Stack:**
@@ -53,32 +58,48 @@ This is a comprehensive project template incorporating best practices and patter
 - **Logging**: Structured logging with configurable levels
 
 ### Databases & Storage
-- **Primary**: PostgreSQL (default, configurable via `DB_TYPE` environment variable)
-- **Cache**: Redis/Valkey with optional TLS and authentication
-- **Database Abstraction Layers (DALs)**:
-  - **Python**: PyDAL (mandatory for ALL Python applications)
-    - Must support ALL PyDAL-supported databases by default
+
+**Hybrid Database Architecture**:
+- **Initialization Phase**: SQLAlchemy for schema setup, migrations, and initialization
+  - Use SQLAlchemy declarative ORM for schema definition
+  - Run Alembic migrations for database initialization
+  - Benefit: Full SQL DDL control, version management
+- **Day-to-Day Operations**: PyDAL for runtime operations and queries
+  - All CRUD operations use PyDAL for multi-database compatibility
+  - Thread-safe connections with thread-local storage
+  - Consistent API across supported databases
+  - Connection pooling and retry logic built-in
+
+**Primary Database**: PostgreSQL (default, configurable via `DB_TYPE` environment variable)
+
+**Cache**: Redis/Valkey with optional TLS and authentication
+
+**Database Abstraction Layers (DALs)**:
+- **Python**:
+  - **SQLAlchemy** (initialization and schema management)
+  - **PyDAL** (mandatory for ALL day-to-day operations)
+    - Must support ONLY postgres, mysql, sqlite (DB_TYPE restricted to these three)
     - Special support for MariaDB Galera cluster requirements
     - `DB_TYPE` must match PyDAL connection string prefixes exactly
-  - **Go**: GORM or sqlx (mandatory for cross-database support)
-    - Must support PostgreSQL and MySQL/MariaDB
-    - Stable, well-maintained library required
-- **Migrations**: Automated schema management
-- **Database Support**: Design for ALL PyDAL-supported databases from the start
-- **MariaDB Galera Support**: Handle Galera-specific requirements (WSREP, auto-increment, transactions)
+- **Go**: GORM or sqlx (mandatory for cross-database support)
+  - Must support PostgreSQL and MySQL/MariaDB
+  - Stable, well-maintained library required
 
-**Supported DB_TYPE Values (PyDAL prefixes)**:
-- `postgres` / `postgresql` - PostgreSQL (default)
-- `mysql` - MySQL/MariaDB
-- `sqlite` - SQLite
-- `mssql` - Microsoft SQL Server
-- `oracle` - Oracle Database
-- `db2` - IBM DB2
-- `firebird` - Firebird
-- `informix` - IBM Informix
-- `ingres` - Ingres
-- `cubrid` - CUBRID
-- `sapdb` - SAP DB/MaxDB
+**Migrations**: Automated schema management via Alembic (SQLAlchemy)
+
+**Database Support**: Design for postgres, mysql, sqlite from the start
+
+**MariaDB Galera Support**: Handle Galera-specific requirements
+  - WSREP consistency (wsrep_sync_wait=1)
+  - Auto-increment configuration
+  - Transaction isolation
+  - Load balancing across cluster nodes
+  - Connection-level settings for read-your-writes guarantees
+
+**Supported DB_TYPE Values (Production-Only)**:
+- `postgres` - PostgreSQL (default, recommended for most use cases)
+- `mysql` - MySQL/MariaDB (including Galera clusters)
+- `sqlite` - SQLite (development and lightweight deployments only)
 
 ### Security & Authentication
 - **Flask-Security-Too**: Mandatory for all Flask applications
@@ -115,16 +136,18 @@ All projects integrate with the centralized PenguinTech License Server at `https
 # License configuration
 LICENSE_KEY=PENG-XXXX-XXXX-XXXX-XXXX-ABCD
 LICENSE_SERVER_URL=https://license.penguintech.io
-PRODUCT_NAME=your-product-identifier
+PRODUCT_NAME=ai-base
 
 # Release mode (enables license enforcement)
 RELEASE_MODE=false  # Development (default)
 RELEASE_MODE=true   # Production (explicitly set)
 ```
 
+📚 **Detailed Documentation**: [License Server Integration Guide](docs/licensing/license-server-integration.md)
+
 ## WaddleAI Integration (Optional)
 
-For projects requiring AI capabilities, integrate with WaddleAI located at `~/code/WaddleAI`.
+For AI-Base, WaddleAI is located at `~/code/WaddleAI` and provides optional AI inference capabilities.
 
 **When to Use WaddleAI:**
 - Natural language processing (NLP)
@@ -139,18 +162,28 @@ For projects requiring AI capabilities, integrate with WaddleAI located at `~/co
 - Environment variable configuration for API endpoints
 - License-gate AI features as enterprise functionality
 
+📚 **WaddleAI Documentation**: See WaddleAI project at `~/code/WaddleAI` for integration details
+
 ## Project Structure
 
 ```
-project-name/
+ai-base/
 ├── .github/             # CI/CD pipelines and templates
-├── apps/                # Application code
+│   └── workflows/       # GitHub Actions for each service
 ├── services/            # Microservices (separate containers by default)
-│   ├── api/            # Flask + Flask-Security-Too backend (separate container)
-│   ├── webui/          # ReactJS frontend (separate container)
-│   └── connector/      # Integration services (separate container)
-├── shared/              # Shared components
-├── web/                 # Marketing/docs websites
+│   ├── api/             # Flask + Flask-Security-Too backend
+│   ├── webui/           # Node.js + React frontend shell
+│   ├── inference/       # AI inference service (optional)
+│   └── connector/       # Integration services (placeholder)
+├── shared/              # Shared libraries (py_libs, go_libs, node_libs)
+│   ├── py_libs/         # Python shared library (pip installable)
+│   ├── go_libs/         # Go shared library (Go module)
+│   ├── node_libs/       # TypeScript shared library (npm package)
+│   └── README.md        # Shared libraries overview
+├── k8s/                 # Kubernetes deployment templates
+│   ├── helm/            # Helm v3 charts per service
+│   ├── manifests/       # Raw K8s manifests (kubectl apply)
+│   └── kustomize/       # Kustomize overlays (dev/staging/prod)
 ├── infrastructure/      # Infrastructure as code
 ├── scripts/             # Utility scripts
 ├── tests/               # Test suites (unit, integration, e2e, performance)
@@ -291,6 +324,25 @@ make license-check-features  # Check available features
 - **CodeQL**: All code must pass CodeQL security analysis
 - **PEP Compliance**: Python code must follow PEP 8, PEP 257 (docstrings), PEP 484 (type hints)
 
+### Pre-Commit Checklist (Complete)
+Before submitting ANY code for commit:
+- [ ] All tests pass locally (`make test`)
+- [ ] All linting checks pass (`make lint`)
+- [ ] No security vulnerabilities in dependencies (Dependabot, Socket.dev)
+- [ ] Security scanning complete (gosec, bandit, npm audit, CodeQL)
+- [ ] Code coverage maintained or improved
+- [ ] Documentation updated (inline comments, docstrings, README/CLAUDE.md)
+- [ ] No hardcoded secrets, credentials, or API keys
+- [ ] No debug code, print statements, or console.log entries
+- [ ] Database migrations tested (if applicable)
+- [ ] Build succeeds in containerized environment (`docker-compose build`)
+- [ ] All type hints present (Python: mypy passes, TypeScript: strict mode)
+- [ ] Edge cases and error handling verified
+- [ ] License requirements addressed (feature gating if applicable)
+- [ ] Performance impact assessed (profiling for critical paths)
+- [ ] Backwards compatibility maintained (if modifying public APIs)
+- [ ] CHANGELOG/RELEASE_NOTES updated (if applicable)
+
 ### Build & Deployment Requirements
 - **NEVER mark tasks as completed until successful build verification**
 - All Go and Python builds MUST be executed within Docker containers
@@ -372,7 +424,7 @@ make license-check-features  # Check available features
 - JWT, MFA, mTLS standard
 - SSO as enterprise feature
 
-## Application Architecture
+## Container Architecture
 
 **ALWAYS use microservices architecture** - decompose into specialized, independently deployable containers:
 
@@ -386,12 +438,49 @@ make license-check-features  # Check available features
 - Separate deployment lifecycles
 - Technology-specific optimization
 
+**Container Responsibilities**:
+- **API/Backend Container**:
+  - Flask application with Flask-Security-Too
+  - PyDAL database access and queries
+  - Business logic and data processing
+  - REST/gRPC endpoints
+  - Health checks and metrics
+  - License enforcement
+  - Exposed ports: Internal only (reverse-proxy via WebUI)
+
+- **WebUI Container**:
+  - ReactJS single-page application
+  - Nginx reverse proxy for API routing
+  - Static asset serving
+  - TLS termination
+  - CORS header management
+  - Exposed ports: 443 (HTTPS), 80 (HTTP redirect)
+
+- **Connector Container** (if required):
+  - Third-party integrations
+  - External system synchronization
+  - Data transformation
+  - Retry logic and queuing
+  - Separate resource constraints
+
+**Network Architecture**:
+- Internal Docker network bridges all containers
+- Only WebUI port exposed to external traffic
+- API communicates with WebUI via internal DNS
+- Database access from API container only
+- Connector services communicate via message queues or gRPC
+
 **Benefits**:
 - Independent scaling
 - Technology diversity
 - Team autonomy
 - Resilience
 - Continuous deployment
+- Security isolation
+
+## Application Architecture
+
+**ALWAYS use microservices architecture** - decompose into specialized, independently deployable components using the container architecture defined above.
 
 ## Common Integration Patterns
 
@@ -442,17 +531,19 @@ def health():
     return {'status': 'healthy'}, 200
 ```
 
-### Database Integration (PyDAL with Multi-Database Support)
+### Database Integration (Hybrid SQLAlchemy + PyDAL with Multi-Database Support)
 ```python
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
 from pydal import DAL, Field
 from dataclasses import dataclass
 import os
 
-# Valid PyDAL DB_TYPE values for input validation
+# Valid DB_TYPE values - restricted to production databases
 VALID_DB_TYPES = {
-    'postgres', 'postgresql', 'mysql', 'sqlite', 'mssql',
-    'oracle', 'db2', 'firebird', 'informix', 'ingres',
-    'cubrid', 'sapdb'
+    'postgres',   # PostgreSQL (recommended)
+    'mysql',      # MySQL/MariaDB (including Galera clusters)
+    'sqlite'      # SQLite (development/lightweight only)
 }
 
 @dataclass(slots=True, frozen=True)
@@ -463,15 +554,47 @@ class UserModel:
     name: str
     active: bool
 
-def get_db_connection() -> DAL:
-    """Initialize PyDAL with environment variables and multi-DB support"""
+# ============================================================================
+# INITIALIZATION PHASE: SQLAlchemy for schema setup and migrations
+# ============================================================================
+Base = declarative_base()
+
+def init_database():
+    """Initialize database using SQLAlchemy (schema creation via Alembic)"""
     db_type = os.getenv('DB_TYPE', 'postgres')
 
-    # Input validation - ensure DB_TYPE matches PyDAL expectations
     if db_type not in VALID_DB_TYPES:
         raise ValueError(f"Invalid DB_TYPE: {db_type}. Must be one of: {VALID_DB_TYPES}")
 
-    # Build connection URI
+    # Construct SQLAlchemy connection URL
+    if db_type == 'postgres':
+        db_url = f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}@" \
+                 f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+    elif db_type == 'mysql':
+        db_url = f"mysql+pymysql://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}@" \
+                 f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+    else:  # sqlite
+        db_url = f"sqlite:///{os.getenv('DB_PATH', 'app.db')}"
+
+    engine = create_engine(db_url, echo=False, pool_size=10, max_overflow=20)
+
+    # Run Alembic migrations for production-ready schema management
+    # alembic upgrade head
+
+    return engine
+
+# ============================================================================
+# DAY-TO-DAY OPERATIONS: PyDAL for runtime queries and CRUD operations
+# ============================================================================
+def get_pydal_connection() -> DAL:
+    """Initialize PyDAL for all day-to-day database operations"""
+    db_type = os.getenv('DB_TYPE', 'postgres')
+
+    # Input validation - ensure DB_TYPE matches production requirements
+    if db_type not in VALID_DB_TYPES:
+        raise ValueError(f"Invalid DB_TYPE: {db_type}. Must be one of: {VALID_DB_TYPES}")
+
+    # Build PyDAL connection URI (use PyDAL prefixes)
     db_uri = f"{db_type}://" \
              f"{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}@" \
              f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/" \
@@ -482,7 +605,7 @@ def get_db_connection() -> DAL:
 
     dal_kwargs = {
         'pool_size': int(os.getenv('DB_POOL_SIZE', '10')),
-        'migrate_enabled': True,
+        'migrate_enabled': False,  # Use Alembic for migrations
         'check_reserved': ['all'],
         'lazy_tables': True
     }
@@ -492,6 +615,13 @@ def get_db_connection() -> DAL:
         dal_kwargs['driver_args'] = {'init_command': 'SET wsrep_sync_wait=1'}
 
     return DAL(db_uri, **dal_kwargs)
+
+# ============================================================================
+# Application startup
+# ============================================================================
+# During app initialization:
+# 1. init_database()  # Runs Alembic migrations
+# 2. db = get_pydal_connection()  # Get PyDAL instance for operations
 ```
 
 ### ReactJS Frontend Integration
@@ -684,181 +814,49 @@ make license-validate         # Validate current license
 - **Sales Inquiries**: sales@penguintech.io
 - **License Server Status**: https://status.penguintech.io
 
-## CI/CD Pipeline & Workflows
+## CI/CD & Workflows
 
-ai-base implements comprehensive CI/CD with full .WORKFLOW compliance for multi-language development. All workflows include version detection, epoch64 timestamps, multi-language security scanning, and conditional metadata tags.
+### Documentation
+- **Complete workflow documentation**: See [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md)
+- **CI/CD standards and requirements**: See [`docs/STANDARDS.md`](docs/STANDARDS.md)
 
-### .WORKFLOW Compliance Standard
+### Build Naming Conventions
 
-All workflows include:
-1. **.version path filters**: Detect version file changes for automatic versioning
-2. **Version detection step**: Parse `.version` file with epoch64 fallback
-3. **Epoch64 timestamp generation**: Unix epoch (seconds since 1970) for precise build tracking
-4. **Multi-language security scanning**: gosec (Go), bandit (Python), npm audit (Node.js)
-5. **Conditional metadata tags**: Dynamic Docker tags based on version patterns
+All container images follow automatic naming based on branch and version changes:
 
-### Core Workflows
+| Scenario | Main Branch | Other Branches |
+|----------|------------|-----------------|
+| Regular build (no `.version` change) | `beta-<epoch64>` | `alpha-<epoch64>` |
+| Version release (`.version` changed) | `vX.X.X-beta` | `vX.X.X-alpha` |
+| Tagged release | `vX.X.X` + `latest` | N/A |
 
-**CI/CD Pipeline** (`ci.yml`):
-- Version detection from `.version` file
-- Multi-language testing: Go, Python, Node.js
-- Security scanning: gosec, bandit, npm audit
-- Integration testing across services
-- Codecov coverage reporting
-- Conditional job execution based on changes
-- Parallel test execution for speed
-
-**Docker Builds** (`ai-base-build.yml`, `ai-base-latest.yml`, `ai-base-nvidia.yml`, `ai-base-rocm.yml`, `ai-base-vulkan.yml`):
-- Multi-platform builds (amd64/arm64)
-- `.version` path filtering
-- Layer caching for performance
-- Multi-registry push (GHCR, Docker Hub)
-- Variant builds for GPU support
-
-**Release Management** (`version-release.yml`):
-- Triggered on `.version` file changes
-- Automatic pre-release creation
-- Epoch64 timestamp generation
-- Conditional metadata tags: [prerelease], [release-candidate], [stable]
-- Prevents duplicate releases
-- Auto-generated release notes
+**Example**: Updating `.version` to `1.2.0` on main branch triggers builds tagged `v1.2.0-beta` (and auto-creates a GitHub pre-release).
 
 ### Version Management
 
-**File**: `.version` (1.0.0.1737727200)
+- **Location**: `.version` file in repository root
+- **Format**: Semantic versioning (e.g., `1.2.3`)
+- **File tracking**: All workflows monitor `.version` for changes
+- **Update command**: Edit `.version` file and commit
+  ```bash
+  echo "1.2.3" > .version
+  git add .version
+  git commit -m "Release v1.2.3"
+  ```
 
-**Format**: `Major.Minor.Patch[.build]`
-- Major: Breaking changes, API changes
-- Minor: New features and functionality
-- Patch: Bug fixes and security patches
-- Build: Optional epoch64 timestamp (auto-appended by CI/CD)
+### Pre-Commit Checklist
 
-**Detection Strategy**:
-```bash
-if [ -f .version ]; then
-  VERSION=$(cat .version)
-else
-  VERSION="0.0.0.$(date +%s)"
-fi
-EPOCH64=$(date +%s)
-```
+Before committing, run in this order:
 
-**Release Process**:
-1. Update `.version` file in feature branch
-2. Commit and create PR
-3. Merge to main branch
-4. GitHub Actions auto-triggers `version-release.yml`
-5. Pre-release created with metadata tags
+- [ ] **Linters**: `npm run lint` or `golangci-lint run` or equivalent
+- [ ] **Security scans**: `npm audit`, `gosec`, `bandit` (per language)
+- [ ] **Tests**: `npm test`, `go test ./...`, `pytest` (unit tests only)
+- [ ] **Version updates**: Update `.version` if releasing new version
+- [ ] **Documentation**: Update docs if adding/changing workflows
+- [ ] **No secrets**: Verify no credentials, API keys, or tokens in code
+- [ ] **Docker builds**: Verify Dockerfile uses debian-slim base (no alpine)
 
-### Multi-Language Security Scanning
-
-**Go (gosec):**
-- Installation: `go install github.com/securego/gosec/v2/cmd/gosec@latest`
-- Execution: `gosec -fmt json -out gosec-results.json ./...`
-- Checks: Hardcoded credentials, SQL injection, weak crypto
-- Output: JSON for analysis
-- Behavior: Warning-only (non-blocking)
-
-**Python (bandit):**
-- Installation: `pip install bandit`
-- Execution: `bandit -r . -f json -o bandit-results.json`
-- Checks: Hardcoded secrets, insecure functions, SQL injection
-- Output: JSON for analysis
-- Behavior: Continue-on-error (non-blocking)
-
-**Node.js (npm audit):**
-- Execution: `npm audit --production --audit-level=moderate`
-- Checks: Known vulnerabilities in dependencies
-- Scope: Production dependencies only
-- Behavior: Continue-on-error (non-blocking)
-
-**All Security Scanning:**
-- Non-blocking (warnings only)
-- JSON output for programmatic analysis
-- High/medium severity issues require review
-- Logged in CI artifacts
-- Part of security dashboard
-
-### Docker Image Tagging
-
-**Service Tagging:**
-```
-API Service:       ghcr.io/penguintechinc/ai-base-api:v1.0.0
-Web Service:       ghcr.io/penguintechinc/ai-base-web:v1.0.0
-Inference Service: ghcr.io/penguintechinc/ai-base-inference:v1.0.0
-```
-
-**Tag Patterns:**
-- Semantic: `v1.0.0`, `v1.0`, `v1`
-- Branch: `main-a1b2c3d4`
-- Release: `latest`, `stable`
-- Version file: `v1.0.0.1737727200`
-
-**Registries:**
-- GitHub Container Registry: `ghcr.io/penguintechinc/`
-- Docker Hub: `docker.io/penguincloud/`
-
-### Performance Optimization
-
-**Build Parallelization:**
-- Language-specific tests in parallel
-- Multi-platform Docker builds (6x parallel: 3 languages × 2 architectures)
-- Independent security scanning
-- Conditional execution: skip unchanged language tests
-
-**Caching Strategy:**
-- Go module cache: `~/.cache/go-build`, `~/go/pkg/mod`
-- Python pip cache: `~/.cache/pip`
-- NPM cache: Built-in via `actions/setup-node`
-- Docker layer cache: GitHub Actions BuildKit cache
-
-**Build Time Targets:**
-- Go tests: < 60 seconds (multiple versions)
-- Python tests: < 60 seconds (multiple versions)
-- Node tests: < 120 seconds (multiple versions)
-- Docker builds: < 2 minutes per platform
-- Total CI pipeline: < 15 minutes
-
-### Monitoring and Troubleshooting
-
-**Build Artifacts:**
-- Test reports (JUnit XML)
-- Coverage reports (HTML, XML)
-- Security scan results (JSON)
-- Build logs with retention policies
-
-**Common Issues:**
-
-**Version Detection Fails:**
-- Verify `.version` file exists and is readable
-- Check for UTF-8 encoding
-- Ensure no leading/trailing whitespace
-
-**Dependency Installation Fails:**
-- Clear pip/npm cache
-- Update requirements.txt/package.json
-- Check network connectivity
-
-**Security Scan Warnings:**
-- Review JSON output in artifacts
-- Address high/medium severity issues
-- Document suppression of false positives
-
-**Docker Build Fails:**
-- Check base image availability
-- Verify Dockerfile syntax
-- Review build context
-- Ensure no hardcoded credentials
-
-### Documentation
-
-See comprehensive documentation:
-- **[docs/WORKFLOWS.md](docs/WORKFLOWS.md)**: Complete workflow reference
-- **[docs/STANDARDS.md](docs/STANDARDS.md)**: Development standards and practices
-- **Security Scanners**:
-  - [gosec](https://github.com/securego/gosec)
-  - [bandit](https://bandit.readthedocs.io/)
-  - [npm audit](https://docs.npmjs.com/cli/v10/commands/npm-audit)
+**Only commit when asked** — follow the pre-commit checklist above, then wait for approval before `git commit`.
 
 ## Template Customization
 
@@ -886,17 +884,20 @@ See comprehensive documentation:
 
 ---
 
-**Template Version**: 1.2.0
-**Last Updated**: 2025-11-23
+**Project Version**: 1.0.0
+**Last Updated**: 2025-12-18
 **Maintained by**: Penguin Tech Inc
 **License Server**: https://license.penguintech.io
 
-**Key Updates in v1.2.0:**
-- Web UI and API as separate containers by default
-- Mandatory linting for all languages (flake8, ansible-lint, eslint, etc.)
-- CodeQL inspection compliance required
-- Multi-database support by design (all PyDAL databases + MariaDB Galera)
-- DB_TYPE environment variable with input validation
-- Flask as sole web framework (PyDAL for database abstraction)
+**Key Features:**
+- Multi-language CI/CD with version detection and epoch64 tracking
+- AI inference service integration (optional, separate container)
+- Multi-language security scanning (gosec, bandit, npm audit)
+- Kubernetes deployment ready (Helm charts, raw manifests, Kustomize)
+- PenguinTech License Server integration
+- Flask + Flask-Security-Too for authentication
+- PyDAL for multi-database operations (PostgreSQL, MySQL, SQLite)
+- React frontend with Tailwind CSS and modern patterns
+- Docker multi-arch builds (amd64/arm64)
 
-*This template provides a production-ready foundation for enterprise software development with comprehensive tooling, security, operational capabilities, and integrated licensing management.*
+*AI-Base provides a production-ready foundation for building AI-powered applications with enterprise-grade CI/CD, security, and operational capabilities.*
