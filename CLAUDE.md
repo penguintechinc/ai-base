@@ -788,116 +788,48 @@ def metrics():
 
 ### Common Issues
 1. **Port Conflicts**: Check docker-compose port mappings
-2. **Database Connections**: Verify connection strings and permissions
-3. **License Validation Failures**: Check license key format and network connectivity
-4. **Build Failures**: Check dependency versions and compatibility
-5. **Test Failures**: Review test environment setup
+2. **Database Connections**: Verify connection strings and credentials
+3. **Module Registration**: Ensure services register on startup
+4. **License Validation**: Check license key format and network connectivity
+5. **Build Failures**: Check dependency versions and Docker build output
 
 ### Debug Commands
 ```bash
 # Container debugging
-docker-compose logs -f service-name
-docker exec -it container-name /bin/bash
+docker logs <container-name>
+docker exec -it <container-name> /bin/bash
 
 # Application debugging
-make debug                    # Start with debug flags
-make logs                     # View application logs
-make health                   # Check service health
+make test-debug              # Debug tests
+make logs                    # View application logs
+make health                  # Check service health
 
 # License debugging
-make license-debug            # Test license server connectivity
-make license-validate         # Validate current license
+curl http://localhost:5000/api/health
+curl http://localhost:5000/api/license/status
 ```
 
 ### Support Resources
+- **Technical Documentation**: [README.md](README.md)
+- **Development Standards**: [docs/STANDARDS.md](docs/STANDARDS.md)
+- **CI/CD Workflows**: [docs/WORKFLOWS.md](docs/WORKFLOWS.md)
+- **GitHub Organization**: https://github.com/penguintechinc
 - **Integration Support**: support@penguintech.io
-- **Sales Inquiries**: sales@penguintech.io
 - **License Server Status**: https://status.penguintech.io
 
-## CI/CD & Workflows
+## License & Legal
 
-### Documentation
-- **Complete workflow documentation**: See [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md)
-- **CI/CD standards and requirements**: See [`docs/STANDARDS.md`](docs/STANDARDS.md)
+**License File**: `LICENSE.md` (located at project root)
 
-### Build Naming Conventions
+**License Type**: Limited AGPL-3.0 with commercial use restrictions and Contributor Employer Exception
 
-All container images follow automatic naming based on branch and version changes:
-
-| Scenario | Main Branch | Other Branches |
-|----------|------------|-----------------|
-| Regular build (no `.version` change) | `beta-<epoch64>` | `alpha-<epoch64>` |
-| Version release (`.version` changed) | `vX.X.X-beta` | `vX.X.X-alpha` |
-| Tagged release | `vX.X.X` + `latest` | N/A |
-
-**Example**: Updating `.version` to `1.2.0` on main branch triggers builds tagged `v1.2.0-beta` (and auto-creates a GitHub pre-release).
-
-### Version Management
-
-- **Location**: `.version` file in repository root
-- **Format**: Semantic versioning (e.g., `1.2.3`)
-- **File tracking**: All workflows monitor `.version` for changes
-- **Update command**: Edit `.version` file and commit
-  ```bash
-  echo "1.2.3" > .version
-  git add .version
-  git commit -m "Release v1.2.3"
-  ```
-
-### Pre-Commit Checklist
-
-Before committing, run in this order:
-
-- [ ] **Linters**: `npm run lint` or `golangci-lint run` or equivalent
-- [ ] **Security scans**: `npm audit`, `gosec`, `bandit` (per language)
-- [ ] **Tests**: `npm test`, `go test ./...`, `pytest` (unit tests only)
-- [ ] **Version updates**: Update `.version` if releasing new version
-- [ ] **Documentation**: Update docs if adding/changing workflows
-- [ ] **No secrets**: Verify no credentials, API keys, or tokens in code
-- [ ] **Docker builds**: Verify Dockerfile uses debian-slim base (no alpine)
-
-**Only commit when asked** — follow the pre-commit checklist above, then wait for approval before `git commit`.
-
-## Template Customization
-
-### Adding New Languages
-1. Create language-specific directory structure
-2. Add Dockerfile and build scripts
-3. Update CI/CD pipeline configuration
-4. Add language-specific linting and testing
-5. Update documentation and examples
-
-### Adding New Services
-1. Use service template in `services/` directory
-2. Configure service discovery and networking
-3. Add monitoring and logging integration
-4. Integrate license checking for service features
-5. Create service-specific tests
-6. Update deployment configurations
-
-### Enterprise Integration
-- Configure license server integration
-- Set up multi-tenant data isolation
-- Implement usage tracking and reporting
-- Add compliance audit logging
-- Configure enterprise monitoring
+The `LICENSE.md` file is located at the project root following industry standards. This project uses a modified AGPL-3.0 license with additional exceptions for commercial use and special provisions for companies employing contributors.
 
 ---
 
-**Project Version**: 1.0.0
+**Template Version**: 1.5.0
 **Last Updated**: 2025-12-18
 **Maintained by**: Penguin Tech Inc
 **License Server**: https://license.penguintech.io
 
-**Key Features:**
-- Multi-language CI/CD with version detection and epoch64 tracking
-- AI inference service integration (optional, separate container)
-- Multi-language security scanning (gosec, bandit, npm audit)
-- Kubernetes deployment ready (Helm charts, raw manifests, Kustomize)
-- PenguinTech License Server integration
-- Flask + Flask-Security-Too for authentication
-- PyDAL for multi-database operations (PostgreSQL, MySQL, SQLite)
-- React frontend with Tailwind CSS and modern patterns
-- Docker multi-arch builds (amd64/arm64)
-
-*AI-Base provides a production-ready foundation for building AI-powered applications with enterprise-grade CI/CD, security, and operational capabilities.*
+*This context helps Claude understand the project goals, technical constraints, and development standards when working on AI-Base.*
